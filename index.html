@@ -1061,6 +1061,46 @@ nav {
 </head>
 <body>
 
+<!-- ── PASSWORD LOCK ── -->
+<div id="lock-screen" style="
+  position:fixed;inset:0;z-index:99998;
+  background:#16120e;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Mono',monospace;
+">
+  <div style="
+    background:#1f1a14;
+    border:1px solid #3d3328;
+    border-radius:12px;
+    padding:40px 36px;
+    width:320px;
+    text-align:center;
+  ">
+    <div style="font-size:32px;margin-bottom:12px;">☕</div>
+    <div style="font-size:18px;color:#f0e8da;font-weight:600;margin-bottom:4px;">Roaster HQ</div>
+    <div style="font-size:12px;color:#7a6550;margin-bottom:28px;">Two Tone Coffee Roasters</div>
+    <input id="lock-input" type="password" placeholder="Enter password"
+      onkeydown="if(event.key==='Enter')checkPassword()"
+      style="
+        width:100%;padding:10px 14px;
+        background:#2a231b;border:1px solid #4a3f30;
+        border-radius:8px;color:#f0e8da;font-family:inherit;
+        font-size:14px;outline:none;margin-bottom:12px;
+        text-align:center;letter-spacing:0.1em;
+      ">
+    <button onclick="checkPassword()" style="
+      width:100%;padding:10px;
+      background:#d4913a;border:none;border-radius:8px;
+      color:#16120e;font-family:inherit;font-size:14px;
+      font-weight:600;cursor:pointer;letter-spacing:0.05em;
+    ">Unlock</button>
+    <div id="lock-error" style="
+      color:#b05040;font-size:12px;margin-top:12px;
+      min-height:16px;
+    "></div>
+  </div>
+</div>
+
 <nav>
   <div class="nav-brand">
     <span class="brand-icon">☕</span>
@@ -3125,6 +3165,35 @@ document.querySelectorAll('.overlay').forEach(o => {
 
 // Expose add coffee button
 document.querySelector('#page-inventory .btn-primary').addEventListener('click', openModal_addCoffee);
+
+// ─────────────────────────────────────────
+// PASSWORD LOCK
+// ─────────────────────────────────────────
+const APP_PASSWORD = 'benny2020';
+
+function checkPassword() {
+  const input = document.getElementById('lock-input').value;
+  if (input === APP_PASSWORD) {
+    document.getElementById('lock-screen').style.display = 'none';
+    sessionStorage.setItem('rhq-unlocked', '1');
+  } else {
+    const err = document.getElementById('lock-error');
+    err.textContent = 'Incorrect password';
+    document.getElementById('lock-input').value = '';
+    document.getElementById('lock-input').focus();
+    setTimeout(() => { err.textContent = ''; }, 2000);
+  }
+}
+
+// Check if already unlocked this session
+if (sessionStorage.getItem('rhq-unlocked') === '1') {
+  document.getElementById('lock-screen').style.display = 'none';
+} else {
+  // Delay app load until unlocked
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('lock-input').focus();
+  });
+}
 
 // ─────────────────────────────────────────
 // INIT
