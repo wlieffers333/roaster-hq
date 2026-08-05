@@ -1062,42 +1062,16 @@ nav {
 <body>
 
 <!-- ── PASSWORD LOCK ── -->
-<div id="lock-screen" style="
-  position:fixed;inset:0;z-index:99998;
-  background:#16120e;
-  display:flex;align-items:center;justify-content:center;
-  font-family:'DM Mono',monospace;
-">
-  <div style="
-    background:#1f1a14;
-    border:1px solid #3d3328;
-    border-radius:12px;
-    padding:40px 36px;
-    width:320px;
-    text-align:center;
-  ">
+<div id="lock-screen" style="position:fixed;inset:0;z-index:99998;background:#16120e;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;">
+  <div style="background:#1f1a14;border:1px solid #3d3328;border-radius:12px;padding:40px 36px;width:320px;text-align:center;">
     <div style="font-size:32px;margin-bottom:12px;">☕</div>
     <div style="font-size:18px;color:#f0e8da;font-weight:600;margin-bottom:4px;">Roaster HQ</div>
     <div style="font-size:12px;color:#7a6550;margin-bottom:28px;">Two Tone Coffee Roasters</div>
     <input id="lock-input" type="password" name="password" autocomplete="current-password" placeholder="Enter password"
       onkeydown="if(event.key==='Enter')checkPassword()"
-      style="
-        width:100%;padding:10px 14px;
-        background:#2a231b;border:1px solid #4a3f30;
-        border-radius:8px;color:#f0e8da;font-family:inherit;
-        font-size:14px;outline:none;margin-bottom:12px;
-        text-align:center;letter-spacing:0.1em;
-      ">
-    <button onclick="checkPassword()" style="
-      width:100%;padding:10px;
-      background:#d4913a;border:none;border-radius:8px;
-      color:#16120e;font-family:inherit;font-size:14px;
-      font-weight:600;cursor:pointer;letter-spacing:0.05em;
-    ">Unlock</button>
-    <div id="lock-error" style="
-      color:#b05040;font-size:12px;margin-top:12px;
-      min-height:16px;
-    "></div>
+      style="width:100%;padding:10px 14px;background:#2a231b;border:1px solid #4a3f30;border-radius:8px;color:#f0e8da;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px;text-align:center;letter-spacing:0.1em;">
+    <button onclick="checkPassword()" style="width:100%;padding:10px;background:#d4913a;border:none;border-radius:8px;color:#16120e;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:0.05em;">Unlock</button>
+    <div id="lock-error" style="color:#b05040;font-size:12px;margin-top:12px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -1111,15 +1085,16 @@ nav {
     <button class="nav-tab" onclick="showPage('inventory')" id="tab-inventory"><span class="tab-icon">📦</span><span class="tab-text">Inventory</span></button>
     <button class="nav-tab" onclick="showPage('blends')"><span class="tab-icon">🔀</span><span class="tab-text">Blends</span></button>
     <button class="nav-tab" onclick="showPage('planner')"><span class="tab-icon">🔥</span><span class="tab-text">Roast Planner</span></button>
+    <div style="display:flex;gap:6px;margin-left:auto;padding:6px 8px;align-items:center;">
+      <button class="btn btn-secondary btn-sm" onclick="exportData()" style="font-size:0.65rem;">⬇ Export</button>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-file').click()" style="font-size:0.65rem;">⬆ Import</button>
+      <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(this)" />
+    </div>
   </div>
   <div class="nav-right">
     <div class="batch-pill">
       Max Batch: <input id="max-batch" type="number" min="0.1" step="0.1" placeholder="8" value="8" /> lbs
     </div>
-    <button class="btn" onclick="exportData()" title="Export all data as backup" style="font-size:12px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);">⬇ Export</button>
-    <label class="btn" title="Import data from backup" style="font-size:12px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);cursor:pointer;">
-      ⬆ Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;">
-    </label>
   </div>
 </nav>
 
@@ -1196,7 +1171,10 @@ nav {
       <div class="page-title">Green Inventory</div>
       <div class="page-subtitle" id="inv-subtitle">0 coffees · 0 lbs total</div>
     </div>
-    <button class="btn btn-primary" onclick="openModal('modal-add-coffee')">+ Add Coffee</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-secondary" id="archive-toggle-btn" onclick="toggleShowArchived()">Show Archived</button>
+      <button class="btn btn-primary" onclick="openModal('modal-add-coffee')">+ Add Coffee</button>
+    </div>
   </div>
   <div class="list" id="inv-list">
     <div class="empty">
@@ -1237,11 +1215,19 @@ nav {
       <div class="page-subtitle">Roast Day Planner</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" id="load-queue-btn" onclick="loadQueue()" style="display:none;">📋 Load Queue</button>
       <button class="btn btn-secondary" onclick="openAddPlannerItem('single')">+ Single Origin</button>
       <button class="btn btn-primary" onclick="openAddPlannerItem('blend')">+ Blend</button>
     </div>
   </div>
   <div id="planner-entries"></div>
+  <div id="queue-banner" style="display:none;background:rgba(200,169,110,0.1);border:1px solid rgba(200,169,110,0.3);border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;">
+    <div style="font-size:0.75rem;color:var(--accent2);">📋 You have a saved queue</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary btn-sm" onclick="loadQueue()">Load Queue</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearQueue()" style="font-size:0.65rem;">Clear</button>
+    </div>
+  </div>
   <div id="planner-empty" class="empty">
     <div class="empty-icon">🔥</div>
     <div class="empty-title">Nothing planned yet</div>
@@ -1392,9 +1378,13 @@ nav {
     <div class="modal-body">
       <div class="form-group" id="planner-select-wrap">
         <label class="form-label" id="planner-select-label">Select Coffee</label>
-        <select class="form-input" id="planner-select"></select>
+        <select class="form-input" id="planner-select" onchange="updateRoastLevelSelector()"></select>
       </div>
       <input type="hidden" id="planner-loss" value="18" />
+      <div class="form-group" id="planner-roast-level-wrap" style="display:none;">
+        <label class="form-label">Roast Level</label>
+        <select class="form-input" id="planner-roast-level"></select>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('modal-planner-add')">Cancel</button>
@@ -1418,6 +1408,60 @@ nav {
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Combine Roast Modal -->
+<div class="overlay" id="modal-combine-roast">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div class="modal-title">Combine Roast?</div>
+      <button class="modal-close" onclick="closeModal('modal-combine-roast')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="combine-roast-message" style="font-size:0.8rem;color:var(--text2);line-height:1.6;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="declineCombine()">Keep Separate</button>
+      <button class="btn btn-primary" onclick="acceptCombine()">Combine</button>
+    </div>
+  </div>
+</div>
+
+<!-- Roast Profiles Modal -->
+<div class="overlay" id="modal-roast-profiles">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-head">
+      <div class="modal-title" id="roast-profiles-title">Roast Profiles</div>
+      <button class="modal-close" onclick="closeModal('modal-roast-profiles')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="roast-profiles-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+      <div style="border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Add Profile</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Roast Level</label>
+            <select class="form-input" id="rp-level">
+              <option value="">— Select —</option>
+              <option>Light</option>
+              <option>Light-Medium</option>
+              <option>Medium</option>
+              <option>Medium-Dark</option>
+              <option>Dark</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Loss %</label>
+            <input class="form-input" id="rp-loss" type="number" min="1" max="30" step="0.5" placeholder="e.g. 17.0" />
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addRoastProfile()" style="width:100%;">+ Add</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('modal-roast-profiles')">Done</button>
+    </div>
+  </div>
+</div>
 
 <!-- Cupping Notes Modal -->
 <div class="overlay" id="modal-cupping">
@@ -1567,11 +1611,6 @@ async function sbFetch(path, options = {}) {
   return text ? JSON.parse(text) : null;
 }
 
-// ─────────────────────────────────────────
-// STORAGE
-// ─────────────────────────────────────────
-
-// Show/hide a loading overlay on the app
 function setLoading(on) {
   let el = document.getElementById('rhq-loading');
   if (!el) {
@@ -1584,36 +1623,40 @@ function setLoading(on) {
   el.style.display = on ? 'flex' : 'none';
 }
 
+async function deleteFromTable(table, id) {
+  try {
+    await sbFetch(`${table}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch(e) {
+    console.error('Delete error', e);
+  }
+}
+
+// ─────────────────────────────────────────
+// STORAGE
+// ─────────────────────────────────────────
 async function save() {
   try {
-    // Upsert all inventory items
     if (inventory.length > 0) {
       await sbFetch('inventory', {
         method: 'POST',
-        prefer: 'resolution=merge-duplicates',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
         body: JSON.stringify(inventory.map(item => ({ id: item.id, data: item })))
       });
     }
-    // Upsert all blends
     if (blends.length > 0) {
       await sbFetch('blends', {
         method: 'POST',
-        prefer: 'resolution=merge-duplicates',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
         body: JSON.stringify(blends.map(b => ({ id: b.id, data: b })))
       });
     }
-    // Upsert roast log entries
     if (roastLog.length > 0) {
       await sbFetch('roast_log', {
         method: 'POST',
-        prefer: 'resolution=merge-duplicates',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
         body: JSON.stringify(roastLog.map(r => ({ id: r.id || (r.date + '-' + r.totalGreen), data: r })))
       });
     }
-    // Save settings
     await sbFetch('settings', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates' },
@@ -1622,14 +1665,6 @@ async function save() {
   } catch(e) {
     console.error('Save error', e);
     showToast('⚠️ Cloud save failed — check connection');
-  }
-}
-
-async function deleteFromTable(table, id) {
-  try {
-    await sbFetch(`${table}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
-  } catch(e) {
-    console.error('Delete error', e);
   }
 }
 
@@ -1642,11 +1677,9 @@ async function load() {
       sbFetch('roast_log?select=data&order=logged_at.asc'),
       sbFetch('settings?select=key,value')
     ]);
-
     inventory = (invRows || []).map(r => r.data);
     blends = (blendRows || []).map(r => r.data);
     roastLog = (logRows || []).map(r => r.data);
-
     const mbSetting = (settingsRows || []).find(s => s.key === 'maxBatch');
     if (mbSetting) {
       maxBatch = parseFloat(mbSetting.value) || 8;
@@ -1680,7 +1713,7 @@ function showPage(name) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
-  if (name === 'planner') renderPlanner();
+  if (name === 'planner') { renderPlanner(); updateQueueUI(); }
   if (name === 'dashboard') renderDashboard();
 }
 
@@ -1738,6 +1771,52 @@ document.getElementById('max-batch').addEventListener('input', function() {
 // ─────────────────────────────────────────
 // RENDER ALL
 // ─────────────────────────────────────────
+function exportData() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    inventory,
+    blends,
+    roastLog,
+    maxBatch
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `roaster-hq-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ Data exported successfully');
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data.inventory)) {
+        showToast('Invalid backup file'); return;
+      }
+      inventory = data.inventory || [];
+      blends = data.blends || [];
+      roastLog = data.roastLog || [];
+      maxBatch = data.maxBatch || 8;
+      document.getElementById('max-batch').value = maxBatch;
+      showToast('☁️ Syncing to cloud…');
+      await save();
+      renderAll();
+      showToast('✅ Data imported and synced to cloud');
+    } catch(err) {
+      showToast('Error importing data — check the file format');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
 function renderAll() {
   renderInventory();
   renderBlends();
@@ -1766,7 +1845,10 @@ function renderInventory() {
     return;
   }
 
-  const sortedInventory = [...inventory].sort((a, b) => b.stock - a.stock);
+  const showArchived = window._showArchived || false;
+  const sortedInventory = [...inventory]
+    .filter(c => showArchived ? c.archived : !c.archived)
+    .sort((a, b) => b.stock - a.stock);
   list.innerHTML = sortedInventory.map(c => {
     const st = stockStatus(c);
     const pct = Math.min(100, (c.stock / (c.initialStock || c.stock)) * 100);
@@ -1778,7 +1860,7 @@ function renderInventory() {
       <div class="card-bar"><div class="card-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
       <div class="card-main">
         <div>
-          <div class="card-name">${c.name}</div>
+          <div class="card-name">${c.name}${c.archived ? ' <span class="meta" style="font-size:0.6rem;">ARCHIVED</span>' : ''}</div>
           <div class="card-meta">
             ${c.supplier ? `<div class="meta">Supplier: <span>${c.supplier}</span></div>` : ''}
             ${c.cost ? `<div class="meta">Cost: <span>$${c.cost.toFixed(2)}/lb</span></div>` : ''}
@@ -1787,6 +1869,7 @@ function renderInventory() {
             ${c.process ? `<div class="meta">Process: <span>${c.process}</span></div>` : ''}
             <div class="meta">Default Loss: <span>${c.defaultLoss || 18}%</span></div>
             ${c.maxBatch ? `<div class="meta">Max Batch: <span>${c.maxBatch} lbs</span></div>` : ''}
+            ${c.roastProfiles && c.roastProfiles.length > 0 ? `<div class="meta">Roast Levels: <span>${c.roastProfiles.map(p => p.level).join(', ')}</span></div>` : ''}
           </div>
           ${c.notes ? `<div class="card-notes">${c.notes}</div>` : ''}
           ${c.cuppingNotes && c.cuppingNotes.length > 0 ? `
@@ -1803,12 +1886,10 @@ function renderInventory() {
         </div>
       </div>
       <div class="card-actions">
-        <button class="btn btn-secondary btn-sm" onclick="openRestock('${c.id}')">+ Restock</button>
-        <button class="btn btn-secondary btn-sm" onclick="openCalcLoss('${c.id}')">% Calc Loss</button>
-        <button class="btn btn-secondary btn-sm" onclick="openTransfer('${c.id}')">⇄ Transfer</button>
-        <button class="btn btn-secondary btn-sm" onclick="openCuppingNotes('${c.id}')">✎ Cup Notes</button>
-        <button class="btn btn-secondary btn-sm" onclick="openEditCoffee('${c.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCoffee('${c.id}')">Remove</button>
+        ${c.archived
+          ? '<button class="btn btn-secondary btn-sm" onclick="unarchiveCoffee(\''+c.id+'\')">↩ Unarchive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
+          : '<button class="btn btn-secondary btn-sm" onclick="openRestock(\''+c.id+'\')">+ Restock</button><button class="btn btn-secondary btn-sm" onclick="openCalcLoss(\''+c.id+'\')">% Calc Loss</button><button class="btn btn-secondary btn-sm" onclick="openTransfer(\''+c.id+'\')">⇄ Transfer</button><button class="btn btn-secondary btn-sm" onclick="openRoastProfiles(\''+c.id+'\')">☕ Roast Levels</button><button class="btn btn-secondary btn-sm" onclick="openCuppingNotes(\''+c.id+'\')">✎ Cup Notes</button><button class="btn btn-secondary btn-sm" onclick="openEditCoffee(\''+c.id+'\')">Edit</button><button class="btn btn-secondary btn-sm" onclick="archiveCoffee(\''+c.id+'\')">Archive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
+        }
       </div>
     </div>`;
   }).join('');
@@ -2019,10 +2100,14 @@ function addBlendComponentRow(data = null) {
   div.innerHTML = `
     <div class="field-group">
       <label class="form-label">Coffee</label>
-      <select class="form-input" id="${rowId}-name" style="font-size:0.75rem;" onchange="updatePctTotal()">
+      <select class="form-input" id="${rowId}-name" style="font-size:0.75rem;" onchange="updatePctTotal(); updateBlendCompRoastLevel('${rowId}')">
         <option value="">Select coffee</option>
         ${coffeeOptions}
       </select>
+    </div>
+    <div class="field-group" id="${rowId}-level-wrap" style="display:none;">
+      <label class="form-label">Roast Level</label>
+      <select class="form-input" id="${rowId}-level" style="font-size:0.75rem;"></select>
     </div>
     <div class="field-group">
       <label class="form-label">%</label>
@@ -2038,11 +2123,48 @@ function addBlendComponentRow(data = null) {
     </div>
   `;
   document.getElementById('blend-components-form').appendChild(div);
+
+  // If editing existing data, restore roast level
+  if (data && data.roastLevel) {
+    updateBlendCompRoastLevel(rowId, data.roastLevel);
+  } else {
+    updateBlendCompRoastLevel(rowId);
+  }
 }
 
 function removeBlendComponentRow(rowId) {
   document.getElementById(rowId)?.remove();
   updatePctTotal();
+}
+
+function updateBlendCompRoastLevel(rowId, selectedLevel = null) {
+  const nameEl = document.getElementById(`${rowId}-name`);
+  const levelWrap = document.getElementById(`${rowId}-level-wrap`);
+  const levelSel = document.getElementById(`${rowId}-level`);
+  const lossEl = document.getElementById(`${rowId}-loss`);
+  if (!nameEl || !levelWrap || !levelSel) return;
+
+  const coffeeName = nameEl.value;
+  const coffee = inventory.find(c => c.name === coffeeName);
+
+  if (coffee && coffee.roastProfiles && coffee.roastProfiles.length > 0) {
+    const levelOrder = ['Light', 'Light-Medium', 'Medium', 'Medium-Dark', 'Dark'];
+    const sorted = [...coffee.roastProfiles].sort((a,b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+    levelSel.innerHTML = sorted.map(p => `<option value="${p.level}" ${selectedLevel === p.level ? 'selected' : ''}>${p.level} (${p.loss}% loss)</option>`).join('');
+    levelWrap.style.display = '';
+
+    // Auto-fill loss % from selected profile
+    levelSel.onchange = () => {
+      const selected = sorted.find(p => p.level === levelSel.value);
+      if (selected && lossEl) lossEl.value = selected.loss;
+    };
+
+    // Set initial loss from selected or first profile
+    const initial = selectedLevel ? sorted.find(p => p.level === selectedLevel) : sorted[0];
+    if (initial && lossEl && !lossEl.dataset.manuallySet) lossEl.value = initial.loss;
+  } else {
+    levelWrap.style.display = 'none';
+  }
 }
 
 function updatePctTotal() {
@@ -2069,7 +2191,10 @@ function saveBlend() {
     const cname = row.querySelector('[id$="-name"]').value;
     const pct = parseFloat(row.querySelector('[id$="-pct"]').value);
     const loss = parseFloat(row.querySelector('[id$="-loss"]').value) || 18;
-    if (cname && pct > 0) { components.push({ name: cname, pct, loss }); totalPct += pct; }
+    const levelEl = row.querySelector('[id$="-level"]');
+    const levelWrap = row.querySelector('[id$="-level-wrap"]');
+    const roastLevel = (levelEl && levelWrap && levelWrap.style.display !== 'none') ? levelEl.value : null;
+    if (cname && pct > 0) { components.push({ name: cname, pct, loss, roastLevel }); totalPct += pct; }
   });
 
   if (components.length < 2) { showToast('Add at least 2 components'); return; }
@@ -2106,16 +2231,35 @@ function openAddPlannerItem(type) {
     document.getElementById('planner-add-title').textContent = 'Add Single Origin';
     document.getElementById('planner-select-label').textContent = 'Select Coffee';
     sel.innerHTML = inventory.length
-      ? [...inventory].sort((a,b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+      ? [...inventory].filter(c => !c.archived).sort((a,b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name}</option>`).join('')
       : `<option value="">No coffees in inventory</option>`;
+    updateRoastLevelSelector();
   } else {
     document.getElementById('planner-add-title').textContent = 'Add Blend';
     document.getElementById('planner-select-label').textContent = 'Select Blend';
     sel.innerHTML = blends.length
       ? blends.map(b => `<option value="${b.id}">${b.name}</option>`).join('')
       : `<option value="">No blends saved</option>`;
+    document.getElementById('planner-roast-level-wrap').style.display = 'none';
   }
   openModal('modal-planner-add');
+}
+
+function updateRoastLevelSelector() {
+  const sel = document.getElementById('planner-select');
+  const coffeeId = sel.value;
+  const coffee = inventory.find(c => c.id === coffeeId);
+  const wrap = document.getElementById('planner-roast-level-wrap');
+  const levelSel = document.getElementById('planner-roast-level');
+
+  if (coffee && coffee.roastProfiles && coffee.roastProfiles.length > 0) {
+    const levelOrder = ['Light', 'Light-Medium', 'Medium', 'Medium-Dark', 'Dark'];
+    const sorted = [...coffee.roastProfiles].sort((a,b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+    levelSel.innerHTML = sorted.map(p => `<option value="${p.level}">${p.level} (${p.loss}% loss)</option>`).join('');
+    wrap.style.display = '';
+  } else {
+    wrap.style.display = 'none';
+  }
 }
 
 function confirmAddToPlanner() {
@@ -2125,10 +2269,17 @@ function confirmAddToPlanner() {
   if (plannerType === 'single') {
     const coffee = inventory.find(c => c.id === selVal);
     if (!coffee) return;
+    const levelSel = document.getElementById('planner-roast-level');
+    const selectedLevel = levelSel && document.getElementById('planner-roast-level-wrap').style.display !== 'none' ? levelSel.value : null;
+    const roastProfile = selectedLevel && coffee.roastProfiles ? coffee.roastProfiles.find(p => p.level === selectedLevel) : null;
+    const loss = roastProfile ? roastProfile.loss : (coffee.defaultLoss || 18);
+    const roastLevel = selectedLevel || null;
+
     plannerItems.push({
       id: genId(), type: 'single',
       coffeeId: coffee.id, name: coffee.name,
-      loss: coffee.defaultLoss || 18,
+      roastLevel,
+      loss,
       maxBatch: coffee.maxBatch || null,
       bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
       extraOz: 0
@@ -2147,11 +2298,86 @@ function confirmAddToPlanner() {
 
   closeModal('modal-planner-add');
   renderPlanner();
+  renderSummary();
+  checkForCombineOpportunity();
+}
+
+let _pendingCombine = null;
+
+function checkForCombineOpportunity() {
+  const singles = plannerItems.filter(x => x.type === 'single' && !x.declinedCombine);
+  const blendItems = plannerItems.filter(x => x.type === 'blend');
+
+  for (const blendItem of blendItems) {
+    const blend = blends.find(b => b.id === blendItem.blendId);
+    if (!blend) continue;
+
+    for (const comp of (blend.components || [])) {
+      const matchingSingle = singles.find(s => {
+        const sCoffee = inventory.find(c => c.id === s.coffeeId);
+        if (!sCoffee || sCoffee.name !== comp.name) return false;
+        if (!s.combinedWith && !(blendItem.combinedSingles || []).includes(s.id)) {
+          // Match roast level if both have one set
+          if (comp.roastLevel && s.roastLevel) return comp.roastLevel === s.roastLevel;
+          return true;
+        }
+        return false;
+      });
+
+      if (matchingSingle) {
+        const levelText = matchingSingle.roastLevel ? ` (${matchingSingle.roastLevel})` : '';
+        document.getElementById('combine-roast-message').innerHTML = `
+          <strong>${comp.name}${levelText}</strong> is both in your planner as a single origin and as a component of <strong>${blend.name}</strong>.<br><br>
+          Since you blend post-roast, would you like to combine them into one roast entry? The batch sheet will show how much goes to single origin vs the blend.`;
+        _pendingCombine = { singleId: matchingSingle.id, blendItemId: blendItem.id, compName: comp.name };
+        openModal('modal-combine-roast');
+        return;
+      }
+    }
+  }
+}
+
+function acceptCombine() {
+  if (!_pendingCombine) return;
+  const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
+  const blendItem = plannerItems.find(x => x.id === _pendingCombine.blendItemId);
+  if (single && blendItem) {
+    single.combinedWith = blendItem.id;
+    single.combinedBlendName = blends.find(b => b.id === blendItem.blendId)?.name || '';
+    if (!blendItem.combinedSingles) blendItem.combinedSingles = [];
+    blendItem.combinedSingles.push(single.id);
+  }
+  _pendingCombine = null;
+  closeModal('modal-combine-roast');
+  renderPlanner();
+  renderSummary();
+  showToast('Roasts combined');
+}
+
+function declineCombine() {
+  if (_pendingCombine) {
+    const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
+    if (single) single.declinedCombine = true;
+    _pendingCombine = null;
+  }
+  closeModal('modal-combine-roast');
 }
 
 function removePlannerItem(id) {
+  // Clean up combine references
+  plannerItems.forEach(item => {
+    if (item.combinedWith === id) {
+      delete item.combinedWith;
+      delete item.combinedBlendName;
+      delete item.declinedCombine;
+    }
+    if (item.combinedSingles) {
+      item.combinedSingles = item.combinedSingles.filter(x => x !== id);
+    }
+  });
   plannerItems = plannerItems.filter(x => x.id !== id);
   renderPlanner();
+  renderSummary();
 }
 
 function renderPlanner() {
@@ -2238,10 +2464,114 @@ function updatePlannerBags(itemId, size, val) {
   if (!item) return;
   item.bags[size] = parseInt(val) || 0;
   calcPlannerItem(item);
+
+  // If this item is combined with another, recalculate the partner too
+  if (item.type === 'blend' && item.combinedSingles && item.combinedSingles.length > 0) {
+    // Blend updated — recalculate combined single origins
+    item.combinedSingles.forEach(singleId => {
+      const single = plannerItems.find(x => x.id === singleId);
+      if (single) calcPlannerItem(single);
+    });
+  } else if (item.type === 'single' && item.combinedWith) {
+    // Single updated — recalculate the blend too so its display is fresh
+    const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+    if (blendItem) calcPlannerItem(blendItem);
+  }
+
   renderSummary();
 }
 
 let _calcLossCoffeeId = null;
+let _showArchived = false;
+
+function toggleShowArchived() {
+  _showArchived = !_showArchived;
+  window._showArchived = _showArchived;
+  document.getElementById('archive-toggle-btn').textContent = _showArchived ? 'Show Active' : 'Show Archived';
+  renderInventory();
+}
+
+function archiveCoffee(coffeeId) {
+  const c = inventory.find(x => x.id === coffeeId);
+  if (!c) return;
+  c.archived = true;
+  save();
+  renderInventory();
+  showToast(`${c.name} archived`);
+}
+
+function unarchiveCoffee(coffeeId) {
+  const c = inventory.find(x => x.id === coffeeId);
+  if (!c) return;
+  c.archived = false;
+  save();
+  renderInventory();
+  showToast(`${c.name} restored to inventory`);
+}
+let _roastProfilesCoffeeId = null;
+
+function openRoastProfiles(coffeeId) {
+  _roastProfilesCoffeeId = coffeeId;
+  const c = inventory.find(x => x.id === coffeeId);
+  if (!c) return;
+  if (!c.roastProfiles) c.roastProfiles = [];
+  document.getElementById('roast-profiles-title').textContent = `Roast Levels — ${c.name}`;
+  document.getElementById('rp-level').value = '';
+  document.getElementById('rp-loss').value = '';
+  renderRoastProfilesList(c);
+  openModal('modal-roast-profiles');
+}
+
+function renderRoastProfilesList(c) {
+  const listEl = document.getElementById('roast-profiles-list');
+  if (!c.roastProfiles || !c.roastProfiles.length) {
+    listEl.innerHTML = `<div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:8px 0;">No roast levels set up yet</div>`;
+    return;
+  }
+  const levelOrder = ['Light', 'Light-Medium', 'Medium', 'Medium-Dark', 'Dark'];
+  const sorted = [...c.roastProfiles].sort((a,b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+  listEl.innerHTML = sorted.map((p, i) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:0.8rem;color:var(--text);font-weight:500;">${p.level}</div>
+        <div style="font-size:0.68rem;color:var(--text3);margin-top:2px;">Loss: ${p.loss}%</div>
+      </div>
+      <button onclick="deleteRoastProfile('${c.id}', ${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.7rem;padding:4px 8px;border-radius:4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">✕</button>
+    </div>`).join('');
+}
+
+function addRoastProfile() {
+  const level = document.getElementById('rp-level').value;
+  const loss = parseFloat(document.getElementById('rp-loss').value);
+  if (!level) { showToast('Please select a roast level'); return; }
+  if (!loss || loss <= 0) { showToast('Please enter a loss %'); return; }
+  const c = inventory.find(x => x.id === _roastProfilesCoffeeId);
+  if (!c) return;
+  if (!c.roastProfiles) c.roastProfiles = [];
+  if (c.roastProfiles.find(p => p.level === level)) {
+    showToast(`${level} profile already exists — remove it first`); return;
+  }
+  c.roastProfiles.push({ level, loss });
+  save();
+  renderInventory();
+  document.getElementById('rp-level').value = '';
+  document.getElementById('rp-loss').value = '';
+  renderRoastProfilesList(c);
+  showToast(`${level} profile added`);
+}
+
+function deleteRoastProfile(coffeeId, index) {
+  const c = inventory.find(x => x.id === coffeeId);
+  if (!c || !c.roastProfiles) return;
+  const levelOrder = ['Light', 'Light-Medium', 'Medium', 'Medium-Dark', 'Dark'];
+  const sorted = [...c.roastProfiles].sort((a,b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+  const toDelete = sorted[index];
+  c.roastProfiles = c.roastProfiles.filter(p => p.level !== toDelete.level);
+  save();
+  renderInventory();
+  renderRoastProfilesList(c);
+  showToast('Profile removed');
+}
 let _cuppingCoffeeId = null;
 
 function openCuppingNotes(coffeeId) {
@@ -2393,6 +2723,10 @@ function updatePlannerLoss(itemId, val) {
   if (!item) return;
   item.loss = parseFloat(val) || 18;
   calcPlannerItem(item);
+  if (item.type === 'single' && item.combinedWith) {
+    const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+    if (blendItem) calcPlannerItem(blendItem);
+  }
   renderSummary();
 }
 
@@ -2409,6 +2743,15 @@ function updatePlannerExtra(itemId, val) {
   if (!item) return;
   item.extraOz = parseFloat(val) || 0;
   calcPlannerItem(item);
+  if (item.type === 'blend' && item.combinedSingles && item.combinedSingles.length > 0) {
+    item.combinedSingles.forEach(singleId => {
+      const single = plannerItems.find(x => x.id === singleId);
+      if (single) calcPlannerItem(single);
+    });
+  } else if (item.type === 'single' && item.combinedWith) {
+    const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+    if (blendItem) calcPlannerItem(blendItem);
+  }
   renderSummary();
 }
 
@@ -2429,12 +2772,51 @@ function calcPlannerItem(item) {
   const roastedLbs = totalRoastedOz / 16;
 
   if (item.type === 'single') {
-    const greenLbs = roastedLbs / (1 - item.loss / 100);
+    let roastedLbsForCalc = roastedLbs;
+    // If combined with a blend, ensure blend is calculated first then add component weight
+    if (item.combinedWith) {
+      const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+      if (blendItem) {
+        // Force recalculate blend first so _compResults is fresh
+        if (blendItem.bags) {
+          let blendRoastedOz = 0;
+          BAG_SIZES.forEach(bs => { blendRoastedOz += (blendItem.bags[bs.label] || 0) * bs.oz; });
+          blendRoastedOz += (blendItem.extraOz || 0);
+          if (blendRoastedOz > 0) {
+            const blendRoastedLbs = blendRoastedOz / 16;
+            const combinedCompNames = (blendItem.combinedSingles || []).map(sid => {
+              const sg = plannerItems.find(x => x.id === sid);
+              return sg ? (inventory.find(c => c.id === sg.coffeeId)?.name || '') : '';
+            });
+            let blendTotalGreen = 0;
+            blendItem._compResults = (blendItem.components || []).map(comp => {
+              const compRoasted = blendRoastedLbs * (comp.pct / 100);
+              const compGreen = compRoasted / (1 - comp.loss / 100);
+              const compCoffeeObj = inventory.find(c => c.name === comp.name);
+              const compEffectiveMax = (compCoffeeObj && compCoffeeObj.maxBatch) ? compCoffeeObj.maxBatch : maxBatch;
+              const numBatches = Math.ceil(compGreen / compEffectiveMax);
+              const lbsPerBatch = compGreen / numBatches;
+              const isCombined = combinedCompNames.includes(comp.name);
+              if (!isCombined) blendTotalGreen += compGreen;
+              return { ...comp, compRoasted, compGreen, numBatches, lbsPerBatch, isCombined };
+            });
+            blendItem._greenLbs = blendTotalGreen;
+            blendItem._roastedLbs = blendRoastedLbs;
+          }
+        }
+        if (blendItem._compResults) {
+          const coffeeObj = inventory.find(c => c.id === item.coffeeId);
+          const compResult = blendItem._compResults.find(cr => cr.name === coffeeObj?.name);
+          if (compResult) roastedLbsForCalc += compResult.compRoasted;
+        }
+      }
+    }
+    const greenLbs = roastedLbsForCalc / (1 - item.loss / 100);
     const effectiveMaxBatch = item.maxBatch || maxBatch;
     const numBatches = Math.ceil(greenLbs / effectiveMaxBatch);
     const lbsPerBatch = greenLbs / numBatches;
     item._greenLbs = greenLbs;
-    item._roastedLbs = roastedLbs;
+    item._roastedLbs = roastedLbsForCalc;
 
     const pills = Array.from({length: numBatches}, (_,i) =>
       `<div class="bpill">Batch ${i+1}: ${(lbsPerBatch * 16).toFixed(1)} oz</div>`).join('');
@@ -2457,11 +2839,38 @@ function calcPlannerItem(item) {
         <div class="result-item"><div class="result-label">Batches</div><div class="result-val highlight">${numBatches}</div><div class="result-unit">@ ${ozPerBatch.toFixed(1)} oz ea</div></div>
       </div>
       <div class="batch-pills">${pills}</div>
-      ${stockWarning}`;
+      ${stockWarning}
+      ${item.combinedWith ? (() => {
+        const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+        const coffeeObj = inventory.find(c => c.id === item.coffeeId);
+        const compResult = blendItem?._compResults?.find(cr => cr.name === coffeeObj?.name);
+        if (!compResult) return '';
+        const soRoasted = roastedLbs;
+        const blendRoasted = compResult.compRoasted;
+        return `<div style="background:rgba(200,169,110,0.1);border:1px solid rgba(200,169,110,0.3);border-radius:6px;padding:8px 12px;margin-top:8px;font-size:0.72rem;">
+          <div style="color:var(--accent2);font-weight:600;margin-bottom:4px;">✓ Combined with ${item.combinedBlendName}</div>
+          <div style="color:var(--text2);">Single Origin: ${(soRoasted * 16).toFixed(1)} oz roasted</div>
+          <div style="color:var(--text2);">Blend component: ${(blendRoasted * 16).toFixed(1)} oz roasted</div>
+          <div style="color:var(--text3);margin-top:3px;font-size:0.68rem;">Total green: ${(greenLbs * 16).toFixed(1)} oz</div>
+        </div>`;
+      })() : ''}`;
 
   } else {
     // Blend
     let totalGreen = 0;
+
+    // Find which components are combined with a single origin in the planner
+    const combinedCompNames = [];
+    if (item.combinedSingles && item.combinedSingles.length > 0) {
+      item.combinedSingles.forEach(singleId => {
+        const single = plannerItems.find(x => x.id === singleId);
+        if (single) {
+          const sCoffee = inventory.find(c => c.id === single.coffeeId);
+          if (sCoffee) combinedCompNames.push(sCoffee.name);
+        }
+      });
+    }
+
     const compResults = item.components.map(comp => {
       const compRoasted = roastedLbs * (comp.pct / 100);
       const compGreen = compRoasted / (1 - comp.loss / 100);
@@ -2469,8 +2878,10 @@ function calcPlannerItem(item) {
       const compEffectiveMax = (compCoffeeObj && compCoffeeObj.maxBatch) ? compCoffeeObj.maxBatch : maxBatch;
       const numBatches = Math.ceil(compGreen / compEffectiveMax);
       const lbsPerBatch = compGreen / numBatches;
-      totalGreen += compGreen;
-      return { ...comp, compRoasted, compGreen, numBatches, lbsPerBatch };
+      const isCombined = combinedCompNames.includes(comp.name);
+      // Only add to blend total if NOT combined with single origin
+      if (!isCombined) totalGreen += compGreen;
+      return { ...comp, compRoasted, compGreen, numBatches, lbsPerBatch, isCombined };
     });
 
     item._greenLbs = totalGreen;
@@ -2478,6 +2889,17 @@ function calcPlannerItem(item) {
     item._compResults = compResults;
 
     const compHTML = compResults.map(cr => {
+      if (cr.isCombined) {
+        return `<div class="breakdown-component">
+          <div>
+            <div class="bc-name">${cr.name}</div>
+            <div style="font-size:0.65rem;color:var(--accent);margin-top:2px;">✓ Combined with single origin entry</div>
+          </div>
+          <div class="bc-pct">${cr.pct}%</div>
+          <div class="bc-stat"><div class="bc-stat-val">${(cr.compGreen * 16).toFixed(1)}</div><div class="bc-stat-label">oz (in SO)</div></div>
+          <div class="bc-stat"><div class="bc-stat-val">—</div><div class="bc-stat-label">separate</div></div>
+        </div>`;
+      }
       const pills = Array.from({length: cr.numBatches}, (_,i) =>
         `<div class="bpill">Batch ${i+1}: ${(cr.lbsPerBatch * 16).toFixed(1)} oz</div>`).join('');
       return `<div class="breakdown-component">
@@ -2491,10 +2913,11 @@ function calcPlannerItem(item) {
       </div>`;
     }).join('');
 
+    const nonCombinedCount = compResults.filter(cr => !cr.isCombined).length;
     resultEl.innerHTML = `
       <div class="result-grid">
         <div class="result-item"><div class="result-label">Roasted Needed</div><div class="result-val">${roastedLbs.toFixed(2)}</div><div class="result-unit">LBS TOTAL</div></div>
-        <div class="result-item"><div class="result-label">Total Green</div><div class="result-val highlight">${(totalGreen * 16).toFixed(1)}</div><div class="result-unit">OZ TOTAL</div></div>
+        <div class="result-item"><div class="result-label">Separate Green</div><div class="result-val highlight">${(totalGreen * 16).toFixed(1)}</div><div class="result-unit">OZ</div></div>
         <div class="result-item"><div class="result-label">Components</div><div class="result-val highlight">${compResults.length}</div><div class="result-unit">beans</div></div>
       </div>
       <div class="blend-breakdown">
@@ -2552,30 +2975,77 @@ function renderSummary() {
           <span style="color:var(--text3);font-size:0.68rem;">Batch ${i+1}</span>
           <span style="color:var(--accent2);font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:0.04em;">${ozEach.toFixed(1)} oz</span>
         </div>`).join('');
+      // Build roasted breakdown if combined with blend
+      let breakdownHTML = '';
+      if (item.combinedWith) {
+        const blendItem = plannerItems.find(x => x.id === item.combinedWith);
+        const coffeeObj = inventory.find(c => c.id === item.coffeeId);
+        const compResult = blendItem?._compResults?.find(cr => cr.name === coffeeObj?.name);
+        if (compResult) {
+          const soRoastedOz = (item._roastedLbs - compResult.compRoasted) * 16;
+          const blendRoastedOz = compResult.compRoasted * 16;
+          breakdownHTML = `
+            <div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;">
+              <div style="font-size:0.6rem;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Roasted Split</div>
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:2px 0;">
+                <span style="color:var(--text3);">→ Single Origin bags</span>
+                <span style="color:var(--text2);font-weight:600;">${soRoastedOz.toFixed(1)} oz</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:2px 0;">
+                <span style="color:var(--text3);">→ ${item.combinedBlendName}</span>
+                <span style="color:var(--text2);font-weight:600;">${blendRoastedOz.toFixed(1)} oz</span>
+              </div>
+            </div>`;
+        }
+      }
+
       return `<div style="margin-bottom:14px;">
-        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--text);margin-bottom:6px;font-weight:600;">${item.name}</div>
+        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--text);margin-bottom:6px;font-weight:600;">${item.name}${item.roastLevel ? ` <span style="font-size:0.65rem;color:var(--text3);font-family:'DM Mono',monospace;">${item.roastLevel}</span>` : ''}</div>
         ${batchList}
         <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;">
-          <span style="color:var(--text3);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;">Total</span>
+          <span style="color:var(--text3);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;">Total Green</span>
           <span style="color:var(--text2);font-family:'Bebas Neue',sans-serif;font-size:0.9rem;">${totalOz.toFixed(1)} oz</span>
         </div>
+        ${breakdownHTML}
       </div>`;
     } else if (item._compResults) {
-      const compLines = item._compResults.map(cr => {
-        const ozEach = cr.lbsPerBatch * 16;
-        const totalOz = cr.compGreen * 16;
-        const batchList = Array.from({length: cr.numBatches}, (_,i) =>
-          `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 10px;">
-            <span style="color:var(--text3);font-size:0.65rem;">${cr.name} — Batch ${i+1}</span>
-            <span style="color:var(--accent2);font-family:'Bebas Neue',sans-serif;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
-          </div>`).join('');
-        return batchList + `<div style="display:flex;justify-content:space-between;padding:2px 0 4px 10px;">
-          <span style="color:var(--text3);font-size:0.6rem;letter-spacing:0.06em;">Total ${cr.name}</span>
-          <span style="color:var(--text3);font-size:0.75rem;">${totalOz.toFixed(1)} oz</span>
-        </div>`;
-      }).join('');
+      // Find which components are combined with single origins
+      const combinedCompNames = [];
+      if (item.combinedSingles && item.combinedSingles.length > 0) {
+        item.combinedSingles.forEach(singleId => {
+          const single = plannerItems.find(x => x.id === singleId);
+          if (single) {
+            const sCoffee = inventory.find(c => c.id === single.coffeeId);
+            if (sCoffee) combinedCompNames.push(sCoffee.name);
+          }
+        });
+      }
+
+      const compLines = item._compResults
+        .filter(cr => !combinedCompNames.includes(cr.name))
+        .map(cr => {
+          const ozEach = cr.lbsPerBatch * 16;
+          const totalOz = cr.compGreen * 16;
+          const batchList = Array.from({length: cr.numBatches}, (_,i) =>
+            `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 10px;">
+              <span style="color:var(--text3);font-size:0.65rem;">${cr.name} — Batch ${i+1}</span>
+              <span style="color:var(--accent2);font-family:'Bebas Neue',sans-serif;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
+            </div>`).join('');
+          return batchList + `<div style="display:flex;justify-content:space-between;padding:2px 0 4px 10px;">
+            <span style="color:var(--text3);font-size:0.6rem;letter-spacing:0.06em;">Total ${cr.name}</span>
+            <span style="color:var(--text3);font-size:0.75rem;">${totalOz.toFixed(1)} oz</span>
+          </div>`;
+        }).join('');
+
+      // Note combined components
+      const combinedNote = combinedCompNames.length > 0
+        ? `<div style="font-size:0.65rem;color:var(--accent);margin-bottom:6px;">✓ ${combinedCompNames.join(', ')} combined with single origin entry</div>`
+        : '';
+
+      if (!compLines && !combinedNote) return '';
       return `<div style="margin-bottom:14px;">
-        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--accent2);margin-bottom:6px;font-weight:600;">${item.name} <span style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">BLEND</span></div>
+        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--accent2);margin-bottom:4px;font-weight:600;">${item.name} <span style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">BLEND</span></div>
+        ${combinedNote}
         ${compLines}
       </div>`;
     }
@@ -2595,6 +3065,7 @@ function renderSummary() {
       </div>
       <div class="summary-actions">
         <button class="btn btn-secondary" onclick="clearPlanner()">Clear Session</button>
+        <button class="btn btn-secondary" onclick="saveToQueue()">💾 Save to Queue</button>
         <button class="btn btn-green" onclick="openConfirmRoast()">✓ Confirm Roast</button>
       </div>
     </div>
@@ -2688,15 +3159,27 @@ function executeRoast() {
   if (!active.length) { showToast('No items to confirm'); return; }
   const today = new Date().toISOString().split('T')[0];
 
-  // Subtract inventory
+  // Subtract inventory — skip blend components already handled by combined single origin
   active.forEach(item => {
     if (item.type === 'single') {
       const c = inventory.find(x => x.id === item.coffeeId);
       if (c) c.stock = parseFloat((c.stock - item._greenLbs).toFixed(2));
     } else if (item._compResults) {
+      const combinedCompNames = [];
+      if (item.combinedSingles && item.combinedSingles.length > 0) {
+        item.combinedSingles.forEach(singleId => {
+          const single = plannerItems.find(x => x.id === singleId);
+          if (single) {
+            const sCoffee = inventory.find(c => c.id === single.coffeeId);
+            if (sCoffee) combinedCompNames.push(sCoffee.name);
+          }
+        });
+      }
       item._compResults.forEach(cr => {
-        const c = inventory.find(x => x.name === cr.name);
-        if (c) c.stock = parseFloat((c.stock - cr.compGreen).toFixed(2));
+        if (!combinedCompNames.includes(cr.name)) {
+          const c = inventory.find(x => x.name === cr.name);
+          if (c) c.stock = parseFloat((c.stock - cr.compGreen).toFixed(2));
+        }
       });
     }
   });
@@ -2774,38 +3257,89 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const bagLines = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`);
       if (item.extraOz > 0) bagLines.push(`${item.extraOz} oz extra`);
       const bagSummary = bagLines.join('  |  ');
-      return `<div style="margin-bottom:14px;">
-        <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}</div>
+
+      // Roasted split for combined entries
+      let splitHTML = '';
+      if (item.combinedWith) {
+        const blendItem = active.find(x => x.id === item.combinedWith);
+        const coffeeObj = inventory.find(c => c.id === item.coffeeId);
+        const compResult = blendItem?._compResults?.find(cr => cr.name === coffeeObj?.name);
+        if (compResult) {
+          const soRoastedOz = (item._roastedLbs - compResult.compRoasted) * 16;
+          const blendRoastedOz = compResult.compRoasted * 16;
+          const splitBorderColor = forPrint ? '#ccc' : 'rgba(0,0,0,0.1)';
+          const splitAccent = forPrint ? '#333' : accentColor;
+          splitHTML = `
+            <div style="border-top:1px dashed ${splitBorderColor};margin-top:6px;padding-top:6px;">
+              <div style="font-size:0.62rem;color:${subColor};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Roasted split</div>
+              <div style="display:flex;justify-content:space-between;font-size:0.72rem;padding:2px 0;">
+                <span style="color:${subColor};">→ Single origin bags</span>
+                <span style="color:${splitAccent};font-weight:bold;">${soRoastedOz.toFixed(1)} oz</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:0.72rem;padding:2px 0;">
+                <span style="color:${subColor};">→ ${item.combinedBlendName}</span>
+                <span style="color:${splitAccent};font-weight:bold;">${blendRoastedOz.toFixed(1)} oz</span>
+              </div>
+            </div>`;
+        }
+      }
+
+      const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
+        <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}</div>
         ${forPrint && bagSummary ? `<div style="font-size:0.72rem;color:${subColor};margin-bottom:6px;letter-spacing:0.02em;">${bagSummary}</div>` : ''}
         ${batches}
-        <div style="display:flex;justify-content:space-between;padding:3px 0;margin-top:3px;">
-          <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total</span>
-          <span style="color:${subColor};font-size:0.78rem;">${totalOz.toFixed(1)} oz</span>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+          <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
+          <span style="color:${subColor};font-size:0.78rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
         </div>
+        ${splitHTML}
       </div>`;
     } else if (item._compResults) {
-      const compLines = item._compResults.map(cr => {
-        const ozEach = cr.lbsPerBatch * 16;
-        const totalOz = cr.compGreen * 16;
-        const batches = Array.from({length: cr.numBatches}, (_,i) =>
-          `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px ${forPrint ? '0' : '12px'};">
-            <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
-              ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
-              <span style="color:${subColor};font-size:0.75rem;">${cr.name} — Batch ${i+1}</span>
-            </div>
-            <span style="color:${accentColor};font-weight:bold;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
-          </div>`).join('');
-        return batches + `<div style="display:flex;justify-content:space-between;padding:2px 0 4px 12px;">
-          <span style="color:${subColor};font-size:0.65rem;">Total ${cr.name}</span>
-          <span style="color:${subColor};font-size:0.75rem;">${totalOz.toFixed(1)} oz</span>
-        </div>`;
-      }).join('');
+      // Skip components combined with single origin
+      const combinedCompNames = [];
+      if (item.combinedSingles && item.combinedSingles.length > 0) {
+        item.combinedSingles.forEach(singleId => {
+          const single = active.find(x => x.id === singleId);
+          if (single) {
+            const sCoffee = inventory.find(c => c.id === single.coffeeId);
+            if (sCoffee) combinedCompNames.push(sCoffee.name);
+          }
+        });
+      }
+
+      const compLines = item._compResults
+        .filter(cr => !combinedCompNames.includes(cr.name))
+        .map(cr => {
+          const ozEach = cr.lbsPerBatch * 16;
+          const totalOz = cr.compGreen * 16;
+          const batches = Array.from({length: cr.numBatches}, (_,i) =>
+            `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px ${forPrint ? '0' : '12px'};">
+              <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
+                ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+                <span style="color:${subColor};font-size:0.75rem;">${cr.name} — Batch ${i+1}</span>
+              </div>
+              <span style="color:${accentColor};font-weight:bold;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
+            </div>`).join('');
+          return batches + `<div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+            <span style="color:${subColor};font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;">Total ${cr.name}</span>
+            <span style="color:${subColor};font-size:0.75rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
+          </div>`;
+        }).join('');
+
       const blendBagLines = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`);
       if (item.extraOz > 0) blendBagLines.push(`${item.extraOz} oz extra`);
       const blendBagSummary = blendBagLines.join('  |  ');
-      return `<div style="margin-bottom:14px;">
+
+      const combinedNote = combinedCompNames.length > 0
+        ? `<div style="font-size:0.65rem;color:${subColor};margin-bottom:6px;font-style:italic;">✓ ${combinedCompNames.join(', ')} combined with single origin entry</div>`
+        : '';
+
+      if (!compLines && !combinedNote) return '';
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${accentColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">BLEND</span></div>
         ${forPrint && blendBagSummary ? `<div style="font-size:0.72rem;color:${subColor};margin-bottom:6px;letter-spacing:0.02em;">${blendBagSummary}</div>` : ''}
+        ${combinedNote}
         ${compLines}
       </div>`;
     }
@@ -2819,8 +3353,8 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       <div style="font-size:0.65rem;color:${subColor};margin-top:1px;">Max batch: ${maxBatch} lbs</div>
     </div>
     ${items}
-    <div style="border-top:2px solid ${textColor};padding-top:10px;margin-top:4px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div style="border-top:2px solid ${textColor};padding-top:12px;margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:${subColor};">Total Green</span>
         <span style="font-weight:bold;font-size:1.2rem;color:${accentColor};">${(totalGreen * 16).toFixed(1)} oz</span>
       </div>
@@ -2828,7 +3362,13 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
         <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:${subColor};">Total Batches</span>
         <span style="font-weight:bold;font-size:1.2rem;color:${accentColor};">${active.reduce((s, item) => {
           if (item.type === 'single') return s + Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
-          if (item._compResults) return s + item._compResults.reduce((bs, cr) => bs + cr.numBatches, 0);
+          if (item._compResults) {
+            const combinedNames = (item.combinedSingles || []).map(sid => {
+              const sg = active.find(x => x.id === sid);
+              return sg ? (inventory.find(c => c.id === sg.coffeeId)?.name || '') : '';
+            });
+            return s + item._compResults.filter(cr => !combinedNames.includes(cr.name)).reduce((bs, cr) => bs + cr.numBatches, 0);
+          }
           return s;
         }, 0)}</span>
       </div>
@@ -2851,6 +3391,22 @@ function showPrintModal(active, totalGreen, dateStr) {
 function printBatchSheet() {
   const html = buildBatchSheetHTML(_printActive, _printTotalGreen, _printDateStr, true);
   const win = window.open('', '_blank');
+  if (!win) {
+    // Popup blocked — show inline in a full-screen overlay instead
+    const overlay = document.createElement('div');
+    overlay.id = 'print-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:9999;overflow:auto;padding:24px;box-sizing:border-box;';
+    overlay.innerHTML = `
+      <div style="max-width:600px;margin:0 auto;font-family:Georgia,serif;color:#000;">
+        <div style="display:flex;gap:10px;margin-bottom:20px;">
+          <button onclick="window.print()" style="padding:8px 16px;font-size:14px;cursor:pointer;background:#000;color:#fff;border:none;border-radius:4px;">Print</button>
+          <button onclick="document.getElementById('print-overlay').remove()" style="padding:8px 16px;font-size:14px;cursor:pointer;background:#fff;color:#000;border:1px solid #ccc;border-radius:4px;">Close</button>
+        </div>
+        ${html}
+      </div>`;
+    document.body.appendChild(overlay);
+    return;
+  }
   win.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -2868,10 +3424,53 @@ ${html}
   win.document.close();
 }
 
+function saveToQueue() {
+  if (!plannerItems.length) { showToast('Nothing to save'); return; }
+  localStorage.setItem('rhq-queue', JSON.stringify(plannerItems));
+  showToast('Queue saved — load it anytime to continue planning');
+  updateQueueUI();
+}
+
+function loadQueue() {
+  const saved = localStorage.getItem('rhq-queue');
+  if (!saved) { showToast('No saved queue found'); return; }
+  try {
+    const items = JSON.parse(saved);
+    if (!items.length) { showToast('Queue is empty'); return; }
+    if (plannerItems.length > 0) {
+      if (!confirm('This will replace your current planner. Continue?')) return;
+    }
+    plannerItems = items;
+    renderPlanner();
+    renderSummary();
+    showToast('Queue loaded');
+  } catch(e) {
+    showToast('Error loading queue');
+  }
+}
+
+function clearQueue() {
+  localStorage.removeItem('rhq-queue');
+  const banner = document.getElementById('queue-banner');
+  const btn = document.getElementById('load-queue-btn');
+  if (banner) banner.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+  showToast('Queue cleared');
+}
+
+function updateQueueUI() {
+  const hasQueue = !!localStorage.getItem('rhq-queue');
+  const banner = document.getElementById('queue-banner');
+  const btn = document.getElementById('load-queue-btn');
+  if (banner) banner.style.display = hasQueue ? 'flex' : 'none';
+  if (btn) btn.style.display = hasQueue ? 'inline-flex' : 'none';
+}
+
 function clearPlanner() {
-  if (!confirm('Clear this roast session?')) return;
   plannerItems = [];
   renderPlanner();
+  const summaryEl = document.getElementById('planner-summary');
+  if (summaryEl) summaryEl.innerHTML = '';
 }
 
 
@@ -3102,61 +3701,6 @@ function renderDashBreakdown(periodLogs, periodLabel) {
 }
 
 // ─────────────────────────────────────────
-// EXPORT / IMPORT
-// ─────────────────────────────────────────
-function exportData() {
-  const data = {
-    exportedAt: new Date().toISOString(),
-    version: 1,
-    inventory,
-    blends,
-    roastLog,
-    maxBatch
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const date = new Date().toISOString().slice(0,10);
-  a.download = `roaster-hq-backup-${date}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('✅ Data exported successfully');
-}
-
-function importData(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data.version || !Array.isArray(data.inventory)) {
-        alert('This doesn\'t look like a valid Roaster HQ backup file.');
-        return;
-      }
-      const confirmed = confirm(
-        `This will REPLACE all current data with the backup from ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString() : 'unknown date'}.\n\nInventory: ${data.inventory.length} coffees\nBlends: ${(data.blends||[]).length}\nRoast log entries: ${(data.roastLog||[]).length}\n\nContinue?`
-      );
-      if (!confirmed) return;
-      inventory = data.inventory || [];
-      blends = data.blends || [];
-      roastLog = data.roastLog || [];
-      maxBatch = data.maxBatch || 8;
-      document.getElementById('max-batch').value = maxBatch;
-      showToast('☁️ Syncing to cloud…');
-      await save();
-      renderAll();
-      showToast('✅ Data imported and synced to cloud');
-    } catch(err) {
-      alert('Failed to read backup file. Make sure it\'s a valid Roaster HQ JSON export.');
-    }
-  };
-  reader.readAsText(file);
-  event.target.value = '';
-}
-
-// ─────────────────────────────────────────
 // CLOSE MODALS ON OVERLAY CLICK
 // ─────────────────────────────────────────
 document.querySelectorAll('.overlay').forEach(o => {
@@ -3176,6 +3720,7 @@ function checkPassword() {
   if (input === APP_PASSWORD) {
     document.getElementById('lock-screen').style.display = 'none';
     sessionStorage.setItem('rhq-unlocked', '1');
+    load();
   } else {
     const err = document.getElementById('lock-error');
     err.textContent = 'Incorrect password';
@@ -3185,21 +3730,16 @@ function checkPassword() {
   }
 }
 
-// Check if already unlocked this session
-if (sessionStorage.getItem('rhq-unlocked') === '1') {
-  document.getElementById('lock-screen').style.display = 'none';
-} else {
-  // Delay app load until unlocked
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('lock-input').focus();
-  });
-}
-
 // ─────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────
 updatePlannerDate();
-load();
+if (sessionStorage.getItem('rhq-unlocked') === '1') {
+  document.getElementById('lock-screen').style.display = 'none';
+  load();
+} else {
+  setTimeout(() => document.getElementById('lock-input')?.focus(), 100);
+}
 </script>
 </body>
 </html>
