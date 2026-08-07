@@ -1146,7 +1146,7 @@ nav {
   <!-- Per coffee breakdown -->
   <div class="dash-breakdown-section">
     <div class="dash-breakdown-head">
-      <div class="dash-breakdown-title" id="dash-breakdown-title">Year to Date — Per Coffee</div>
+      <div class="dash-breakdown-title" id="dash-breakdown-title">Top 5 This Month</div>
       <div class="dash-breakdown-sub" id="dash-breakdown-period"></div>
     </div>
     <div class="dash-breakdown-body" id="dash-breakdown-body">
@@ -2231,7 +2231,7 @@ function openAddPlannerItem(type) {
     document.getElementById('planner-add-title').textContent = 'Add Single Origin';
     document.getElementById('planner-select-label').textContent = 'Select Coffee';
     sel.innerHTML = inventory.length
-      ? [...inventory].filter(c => !c.archived).sort((a,b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+      ? [...inventory].filter(c => !c.archived).sort((a,b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name} (${c.stock.toFixed(1)} lbs)</option>`).join('')
       : `<option value="">No coffees in inventory</option>`;
     updateRoastLevelSelector();
   } else {
@@ -3523,10 +3523,10 @@ function renderDashboard() {
 
   // Per-coffee this month
   const monthLogs = roastLog.filter(r => {
-    const d = new Date(r.date);
-    return d.getFullYear() === thisYear && d.getMonth() === thisMonth;
+    const [y, m] = r.date.split('-').map(Number);
+    return y === thisYear && m - 1 === thisMonth;
   });
-  renderDashBreakdown(ytdLogs, String(thisYear));
+  renderDashBreakdown(monthLogs, monthNames[thisMonth], 5);
 }
 
 function renderDashBags(ytdLogs, year) {
@@ -3664,7 +3664,7 @@ function renderDashChart(now, thisYear, thisMonth) {
   });
 }
 
-function renderDashBreakdown(periodLogs, periodLabel) {
+function renderDashBreakdown(periodLogs, periodLabel, limit = null) {
   const breakdownEl = document.getElementById('dash-breakdown');
   const emptyEl = document.getElementById('dash-breakdown-empty');
   document.getElementById('dash-breakdown-period').textContent = periodLabel;
@@ -3677,7 +3677,8 @@ function renderDashBreakdown(periodLogs, periodLabel) {
     });
   });
 
-  const entries = Object.entries(coffeeMap).sort((a,b) => b[1] - a[1]);
+  let entries = Object.entries(coffeeMap).sort((a,b) => b[1] - a[1]);
+  if (limit) entries = entries.slice(0, limit);
 
   if (!entries.length) {
     breakdownEl.innerHTML = '';
