@@ -1146,7 +1146,7 @@ nav {
   <!-- Per coffee breakdown -->
   <div class="dash-breakdown-section">
     <div class="dash-breakdown-head">
-      <div class="dash-breakdown-title" id="dash-breakdown-title">Top 5 This Month</div>
+      <div class="dash-breakdown-title" id="dash-breakdown-title">Top 10 — Year to Date</div>
       <div class="dash-breakdown-sub" id="dash-breakdown-period"></div>
     </div>
     <div class="dash-breakdown-body" id="dash-breakdown-body">
@@ -1868,6 +1868,7 @@ function renderInventory() {
             ${c.dateReceived ? `<div class="meta">Received: <span>${fmtDate(c.dateReceived)}</span></div>` : ''}
             ${c.process ? `<div class="meta">Process: <span>${c.process}</span></div>` : ''}
             <div class="meta">Default Loss: <span>${c.defaultLoss || 18}%</span></div>
+            ${c.lastRoasted ? `<div class="meta">Last Roasted: <span>${fmtDate(c.lastRoasted)}</span></div>` : ''}
             ${c.maxBatch ? `<div class="meta">Max Batch: <span>${c.maxBatch} lbs</span></div>` : ''}
             ${c.roastProfiles && c.roastProfiles.length > 0 ? `<div class="meta">Roast Levels: <span>${c.roastProfiles.map(p => p.level).join(', ')}</span></div>` : ''}
           </div>
@@ -3208,6 +3209,19 @@ function executeRoast() {
     });
   });
 
+  // Update lastRoasted on each coffee
+  active.forEach(item => {
+    if (item.type === 'single') {
+      const c = inventory.find(x => x.id === item.coffeeId);
+      if (c) c.lastRoasted = today;
+    } else if (item._compResults) {
+      item._compResults.forEach(cr => {
+        const c = inventory.find(x => x.name === cr.name);
+        if (c) c.lastRoasted = today;
+      });
+    }
+  });
+
   roastLog.push({
     id: genId(),
     date: today,
@@ -3526,7 +3540,7 @@ function renderDashboard() {
     const [y, m] = r.date.split('-').map(Number);
     return y === thisYear && m - 1 === thisMonth;
   });
-  renderDashBreakdown(monthLogs, monthNames[thisMonth], 5);
+  renderDashBreakdown(ytdLogs, String(thisYear), 10);
 }
 
 function renderDashBags(ytdLogs, year) {
