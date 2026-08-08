@@ -2308,6 +2308,7 @@ let _pendingCombine = null;
 function checkForCombineOpportunity() {
   const singles = plannerItems.filter(x => x.type === 'single' && !x.declinedCombine);
   const blendItems = plannerItems.filter(x => x.type === 'blend');
+  const pending = [];
 
   for (const blendItem of blendItems) {
     const blend = blends.find(b => b.id === blendItem.blendId);
@@ -2318,7 +2319,6 @@ function checkForCombineOpportunity() {
         const sCoffee = inventory.find(c => c.id === s.coffeeId);
         if (!sCoffee || sCoffee.name !== comp.name) return false;
         if (!s.combinedWith && !(blendItem.combinedSingles || []).includes(s.id)) {
-          // Match roast level if both have one set
           if (comp.roastLevel && s.roastLevel) return comp.roastLevel === s.roastLevel;
           return true;
         }
@@ -2326,16 +2326,21 @@ function checkForCombineOpportunity() {
       });
 
       if (matchingSingle) {
-        const levelText = matchingSingle.roastLevel ? ` (${matchingSingle.roastLevel})` : '';
-        document.getElementById('combine-roast-message').innerHTML = `
-          <strong>${comp.name}${levelText}</strong> is both in your planner as a single origin and as a component of <strong>${blend.name}</strong>.<br><br>
-          Since you blend post-roast, would you like to combine them into one roast entry? The batch sheet will show how much goes to single origin vs the blend.`;
-        _pendingCombine = { singleId: matchingSingle.id, blendItemId: blendItem.id, compName: comp.name };
-        openModal('modal-combine-roast');
-        return;
+        pending.push({ singleId: matchingSingle.id, blendItemId: blendItem.id, compName: comp.name, blendName: blend.name, roastLevel: matchingSingle.roastLevel });
       }
     }
   }
+
+  if (pending.length === 0) return;
+
+  // Show first pending combine
+  const first = pending[0];
+  const levelText = first.roastLevel ? ` (${first.roastLevel})` : '';
+  document.getElementById('combine-roast-message').innerHTML = `
+    <strong>${first.compName}${levelText}</strong> is both in your planner as a single origin and as a component of <strong>${first.blendName}</strong>.<br><br>
+    Since you blend post-roast, would you like to combine them into one roast entry? The batch sheet will show how much goes to single origin vs the blend.`;
+  _pendingCombine = first;
+  openModal('modal-combine-roast');
 }
 
 function acceptCombine() {
@@ -2353,6 +2358,8 @@ function acceptCombine() {
   renderPlanner();
   renderSummary();
   showToast('Roasts combined');
+  // Check if there are more combines to handle
+  setTimeout(() => checkForCombineOpportunity(), 300);
 }
 
 function declineCombine() {
@@ -2362,6 +2369,8 @@ function declineCombine() {
     _pendingCombine = null;
   }
   closeModal('modal-combine-roast');
+  // Check if there are more combines to handle
+  setTimeout(() => checkForCombineOpportunity(), 300);
 }
 
 function removePlannerItem(id) {
@@ -3349,12 +3358,34 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
         ? `<div style="font-size:0.65rem;color:${subColor};margin-bottom:6px;font-style:italic;">✓ ${combinedCompNames.join(', ')} combined with single origin entry</div>`
         : '';
 
+      // Build post-roast assembly section for print
+      let assemblyHTML = '';
+      if (forPrint && combinedCompNames.length > 0) {
+        const assemblyLines = item._compResults
+          .filter(cr => combinedCompNames.includes(cr.name))
+          .map(cr => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ddd;">
+            <span style="color:#555;font-size:0.75rem;">→ Set aside from ${cr.name}</span>
+            <span style="font-weight:bold;font-size:0.85rem;">${(cr.compRoasted * 16).toFixed(1)} oz roasted</span>
+          </div>`).join('');
+        const totalBlendRoasted = item._compResults.reduce((s, cr) => s + cr.compRoasted, 0) * 16;
+        assemblyHTML = `
+          <div style="margin-top:8px;padding:8px 10px;background:#f5f5f5;border-radius:6px;border:1px solid #ddd;">
+            <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:6px;font-weight:600;">Post-roast — set aside for ${item.name}</div>
+            ${assemblyLines}
+            <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid #ccc;">
+              <span style="font-size:0.7rem;color:#333;font-weight:bold;">Total into blend</span>
+              <span style="font-weight:bold;font-size:0.9rem;">${totalBlendRoasted.toFixed(1)} oz</span>
+            </div>
+          </div>`;
+      }
+
       if (!compLines && !combinedNote) return '';
       return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${accentColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">BLEND</span></div>
         ${forPrint && blendBagSummary ? `<div style="font-size:0.72rem;color:${subColor};margin-bottom:6px;letter-spacing:0.02em;">${blendBagSummary}</div>` : ''}
         ${combinedNote}
         ${compLines}
+        ${assemblyHTML}
       </div>`;
     }
     return '';
