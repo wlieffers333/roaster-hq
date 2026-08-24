@@ -2939,9 +2939,16 @@ function calcPlannerItem(item) {
   }
 }
 
+function hasRoastOutput(item) {
+  // A blend fully folded into single-origin batches has _greenLbs of 0
+  // (nothing separate to charge) but still needs to appear on the sheet
+  // showing how much roasted coffee to set aside for it.
+  return (item._greenLbs > 0) || (item._roastedLbs > 0);
+}
+
 function renderSummary() {
   const summaryEl = document.getElementById('planner-summary');
-  const active = plannerItems.filter(x => x._greenLbs > 0);
+  const active = plannerItems.filter(hasRoastOutput);
 
   if (!active.length) { summaryEl.style.display = 'none'; return; }
   summaryEl.style.display = '';
@@ -3105,7 +3112,7 @@ function renderSummary() {
 }
 
 function checkStockWarnings() {
-  const active = plannerItems.filter(x => x._greenLbs > 0);
+  const active = plannerItems.filter(hasRoastOutput);
   const warnings = [];
   active.forEach(item => {
     if (item.type === 'single') {
@@ -3115,7 +3122,21 @@ function checkStockWarnings() {
         warnings.push(`${item.name} is ${shortOz} oz short`);
       }
     } else if (item._compResults) {
+      // Components combined with a single origin are already covered by
+      // that single origin's own stock check — skip them here to avoid
+      // warning about the same shortfall twice.
+      const combinedCompNames = [];
+      if (item.combinedSingles && item.combinedSingles.length > 0) {
+        item.combinedSingles.forEach(singleId => {
+          const single = plannerItems.find(x => x.id === singleId);
+          if (single) {
+            const sCoffee = inventory.find(c => c.id === single.coffeeId);
+            if (sCoffee) combinedCompNames.push(sCoffee.name);
+          }
+        });
+      }
       item._compResults.forEach(cr => {
+        if (combinedCompNames.includes(cr.name)) return;
         const coffee = inventory.find(c => c.name === cr.name);
         if (coffee && cr.compGreen > coffee.stock) {
           const shortOz = ((cr.compGreen - coffee.stock) * 16).toFixed(1);
@@ -3128,7 +3149,7 @@ function checkStockWarnings() {
 }
 
 function openConfirmRoast() {
-  const active = plannerItems.filter(x => x._greenLbs > 0);
+  const active = plannerItems.filter(hasRoastOutput);
   if (!active.length) return;
 
   // Build deduction map
@@ -3138,7 +3159,21 @@ function openConfirmRoast() {
       const c = inventory.find(x => x.id === item.coffeeId);
       if (c) deductions[c.id] = { name: c.name, lbs: (deductions[c.id]?.lbs || 0) + item._greenLbs };
     } else if (item._compResults) {
+      // Components combined with a single origin are already deducted
+      // under that single origin's own entry — skip here to avoid
+      // subtracting the same green weight twice.
+      const combinedCompNames = [];
+      if (item.combinedSingles && item.combinedSingles.length > 0) {
+        item.combinedSingles.forEach(singleId => {
+          const single = plannerItems.find(x => x.id === singleId);
+          if (single) {
+            const sCoffee = inventory.find(c => c.id === single.coffeeId);
+            if (sCoffee) combinedCompNames.push(sCoffee.name);
+          }
+        });
+      }
       item._compResults.forEach(cr => {
+        if (combinedCompNames.includes(cr.name)) return;
         const c = inventory.find(x => x.name === cr.name);
         if (c) deductions[c.id] = { name: c.name, lbs: (deductions[c.id]?.lbs || 0) + cr.compGreen };
       });
@@ -3167,9 +3202,24 @@ function openConfirmRoast() {
 
 function executeRoast() {
   try {
-  const active = plannerItems.filter(x => x._greenLbs > 0);
+  const active = plannerItems.filter(hasRoastOutput);
   if (!active.length) { showToast('No items to confirm'); return; }
   const today = new Date().toISOString().split('T')[0];
+
+  // Names of blend components that are combined with a single-origin
+  // planner entry, keyed by the blend item's id — used below so batch
+  // counts and per-coffee totals aren't double-counted.
+  const combinedNamesByBlend = {};
+  active.forEach(item => {
+    if (item.type !== 'blend' || !item.combinedSingles || !item.combinedSingles.length) return;
+    combinedNamesByBlend[item.id] = item.combinedSingles
+      .map(singleId => {
+        const single = plannerItems.find(x => x.id === singleId);
+        const sCoffee = single ? inventory.find(c => c.id === single.coffeeId) : null;
+        return sCoffee ? sCoffee.name : null;
+      })
+      .filter(Boolean);
+  });
 
   // Subtract inventory — skip blend components already handled by combined single origin
   active.forEach(item => {
@@ -3200,7 +3250,12 @@ function executeRoast() {
   const totalGreen = active.reduce((s,x) => s + x._greenLbs, 0);
   const totalBatches = active.reduce((s, item) => {
     if (item.type === 'single') return s + Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
-    if (item._compResults) return s + item._compResults.reduce((bs, cr) => bs + cr.numBatches, 0);
+    if (item._compResults) {
+      const combinedNames = combinedNamesByBlend[item.id] || [];
+      return s + item._compResults
+        .filter(cr => !combinedNames.includes(cr.name))
+        .reduce((bs, cr) => bs + cr.numBatches, 0);
+    }
     return s;
   }, 0);
 
@@ -3215,9 +3270,13 @@ function executeRoast() {
   const coffeeEntries = {};
   active.forEach(item => {
     if (item.type === 'single') coffeeEntries[item.name] = (coffeeEntries[item.name] || 0) + item._greenLbs;
-    else if (item._compResults) item._compResults.forEach(cr => {
-      coffeeEntries[cr.name] = (coffeeEntries[cr.name] || 0) + cr.compGreen;
-    });
+    else if (item._compResults) {
+      const combinedNames = combinedNamesByBlend[item.id] || [];
+      item._compResults.forEach(cr => {
+        if (combinedNames.includes(cr.name)) return;
+        coffeeEntries[cr.name] = (coffeeEntries[cr.name] || 0) + cr.compGreen;
+      });
+    }
   });
 
   // Update lastRoasted on each coffee
