@@ -2312,11 +2312,13 @@ function checkForCombineOpportunity() {
   const blendItems = plannerItems.filter(x => x.type === 'blend');
   const pending = [];
 
+  // Pass 1: single-origin <-> blend
   for (const blendItem of blendItems) {
     const blend = blends.find(b => b.id === blendItem.blendId);
     if (!blend) continue;
 
     for (const comp of (blend.components || [])) {
+      if (blendItem.sharedRoasts && blendItem.sharedRoasts[comp.name]) continue;
       const matchingSingle = singles.find(s => {
         const sCoffee = inventory.find(c => c.id === s.coffeeId);
         if (!sCoffee || sCoffee.name !== comp.name) return false;
@@ -2328,7 +2330,50 @@ function checkForCombineOpportunity() {
       });
 
       if (matchingSingle) {
-        pending.push({ singleId: matchingSingle.id, blendItemId: blendItem.id, compName: comp.name, blendName: blend.name, roastLevel: matchingSingle.roastLevel });
+        pending.push({ kind: 'single-blend', singleId: matchingSingle.id, blendItemId: blendItem.id, compName: comp.name, blendName: blend.name, roastLevel: matchingSingle.roastLevel });
+      }
+    }
+  }
+
+  // Pass 2: blend <-> blend sharing the same bean at the same roast level
+  const isCombinedWithSingle = (blendItem, compName) => (blendItem.combinedSingles || []).some(sid => {
+    const s = plannerItems.find(x => x.id === sid);
+    const sCoffee = s ? inventory.find(c => c.id === s.coffeeId) : null;
+    return sCoffee && sCoffee.name === compName;
+  });
+
+  for (let i = 0; i < blendItems.length; i++) {
+    for (let j = i + 1; j < blendItems.length; j++) {
+      const blendA = blendItems[i];
+      const blendB = blendItems[j];
+      const defA = blends.find(b => b.id === blendA.blendId);
+      const defB = blends.find(b => b.id === blendB.blendId);
+      if (!defA || !defB) continue;
+
+      for (const compA of (defA.components || [])) {
+        if (blendA.sharedRoasts && blendA.sharedRoasts[compA.name]) continue;
+        if (isCombinedWithSingle(blendA, compA.name)) continue;
+
+        const compB = (defB.components || []).find(c => c.name === compA.name);
+        if (!compB) continue;
+        if (blendB.sharedRoasts && blendB.sharedRoasts[compB.name]) continue;
+        if (isCombinedWithSingle(blendB, compB.name)) continue;
+
+        // Roast levels must match if both sides specify one
+        if (compA.roastLevel && compB.roastLevel && compA.roastLevel !== compB.roastLevel) continue;
+
+        // Skip if this exact pair+bean was already declined
+        const declinedA = (blendA.declinedSharedRoasts || []).includes(`${blendB.id}:${compA.name}`);
+        const declinedB = (blendB.declinedSharedRoasts || []).includes(`${blendA.id}:${compA.name}`);
+        if (declinedA || declinedB) continue;
+
+        pending.push({
+          kind: 'blend-blend',
+          blendAId: blendA.id, blendBId: blendB.id,
+          compName: compA.name,
+          roastLevel: compA.roastLevel || compB.roastLevel || null,
+          blendAName: defA.name, blendBName: defB.name
+        });
       }
     }
   }
@@ -2337,24 +2382,67 @@ function checkForCombineOpportunity() {
 
   // Show first pending combine
   const first = pending[0];
-  const levelText = first.roastLevel ? ` (${first.roastLevel})` : '';
-  document.getElementById('combine-roast-message').innerHTML = `
-    <strong>${first.compName}${levelText}</strong> is both in your planner as a single origin and as a component of <strong>${first.blendName}</strong>.<br><br>
-    Since you blend post-roast, would you like to combine them into one roast entry? The batch sheet will show how much goes to single origin vs the blend.`;
   _pendingCombine = first;
+  const levelText = first.roastLevel ? ` (${first.roastLevel})` : '';
+
+  if (first.kind === 'blend-blend') {
+    document.getElementById('combine-roast-message').innerHTML = `
+      <strong>${first.compName}${levelText}</strong> is a shared component of both <strong>${first.blendAName}</strong> and <strong>${first.blendBName}</strong>.<br><br>
+      Since you blend post-roast, would you like to roast it once and split it between both blends afterward? The batch sheet will show a shared roast entry plus how much goes to each blend.`;
+  } else {
+    document.getElementById('combine-roast-message').innerHTML = `
+      <strong>${first.compName}${levelText}</strong> is both in your planner as a single origin and as a component of <strong>${first.blendName}</strong>.<br><br>
+      Since you blend post-roast, would you like to combine them into one roast entry? The batch sheet will show how much goes to single origin vs the blend.`;
+  }
   openModal('modal-combine-roast');
 }
 
 function acceptCombine() {
   if (!_pendingCombine) return;
-  const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
-  const blendItem = plannerItems.find(x => x.id === _pendingCombine.blendItemId);
-  if (single && blendItem) {
-    single.combinedWith = blendItem.id;
-    single.combinedBlendName = blends.find(b => b.id === blendItem.blendId)?.name || '';
-    if (!blendItem.combinedSingles) blendItem.combinedSingles = [];
-    blendItem.combinedSingles.push(single.id);
+
+  if (_pendingCombine.kind === 'blend-blend') {
+    const blendA = plannerItems.find(x => x.id === _pendingCombine.blendAId);
+    const blendB = plannerItems.find(x => x.id === _pendingCombine.blendBId);
+    if (blendA && blendB) {
+      const compName = _pendingCombine.compName;
+      const roastLevel = _pendingCombine.roastLevel;
+      const coffeeObj = inventory.find(c => c.name === compName);
+      let loss = 18;
+      if (roastLevel && coffeeObj && coffeeObj.roastProfiles) {
+        const match = coffeeObj.roastProfiles.find(p => p.level === roastLevel);
+        if (match) loss = match.loss;
+        else if (coffeeObj.defaultLoss) loss = coffeeObj.defaultLoss;
+      } else if (coffeeObj && coffeeObj.defaultLoss) {
+        loss = coffeeObj.defaultLoss;
+      }
+      const sharedItem = {
+        id: genId(), type: 'shared',
+        name: compName,
+        coffeeId: coffeeObj ? coffeeObj.id : null,
+        roastLevel: roastLevel || null,
+        loss,
+        maxBatch: (coffeeObj && coffeeObj.maxBatch) ? coffeeObj.maxBatch : null,
+        hostedBlends: [blendA.id, blendB.id],
+        bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+        extraOz: 0
+      };
+      plannerItems.push(sharedItem);
+      if (!blendA.sharedRoasts) blendA.sharedRoasts = {};
+      if (!blendB.sharedRoasts) blendB.sharedRoasts = {};
+      blendA.sharedRoasts[compName] = sharedItem.id;
+      blendB.sharedRoasts[compName] = sharedItem.id;
+    }
+  } else {
+    const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
+    const blendItem = plannerItems.find(x => x.id === _pendingCombine.blendItemId);
+    if (single && blendItem) {
+      single.combinedWith = blendItem.id;
+      single.combinedBlendName = blends.find(b => b.id === blendItem.blendId)?.name || '';
+      if (!blendItem.combinedSingles) blendItem.combinedSingles = [];
+      blendItem.combinedSingles.push(single.id);
+    }
   }
+
   _pendingCombine = null;
   closeModal('modal-combine-roast');
   renderPlanner();
@@ -2366,8 +2454,21 @@ function acceptCombine() {
 
 function declineCombine() {
   if (_pendingCombine) {
-    const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
-    if (single) single.declinedCombine = true;
+    if (_pendingCombine.kind === 'blend-blend') {
+      const blendA = plannerItems.find(x => x.id === _pendingCombine.blendAId);
+      const blendB = plannerItems.find(x => x.id === _pendingCombine.blendBId);
+      if (blendA) {
+        if (!blendA.declinedSharedRoasts) blendA.declinedSharedRoasts = [];
+        blendA.declinedSharedRoasts.push(`${_pendingCombine.blendBId}:${_pendingCombine.compName}`);
+      }
+      if (blendB) {
+        if (!blendB.declinedSharedRoasts) blendB.declinedSharedRoasts = [];
+        blendB.declinedSharedRoasts.push(`${_pendingCombine.blendAId}:${_pendingCombine.compName}`);
+      }
+    } else {
+      const single = plannerItems.find(x => x.id === _pendingCombine.singleId);
+      if (single) single.declinedCombine = true;
+    }
     _pendingCombine = null;
   }
   closeModal('modal-combine-roast');
@@ -2376,7 +2477,9 @@ function declineCombine() {
 }
 
 function removePlannerItem(id) {
-  // Clean up combine references
+  const removed = plannerItems.find(x => x.id === id);
+
+  // Clean up single<->blend combine references
   plannerItems.forEach(item => {
     if (item.combinedWith === id) {
       delete item.combinedWith;
@@ -2387,6 +2490,37 @@ function removePlannerItem(id) {
       item.combinedSingles = item.combinedSingles.filter(x => x !== id);
     }
   });
+
+  // Clean up blend<->blend shared-roast references
+  if (removed && removed.type === 'shared') {
+    // Removing the shared entry directly reverts both hosted blends to
+    // calculating that bean's green need on their own again.
+    (removed.hostedBlends || []).forEach(bid => {
+      const blend = plannerItems.find(x => x.id === bid);
+      if (blend && blend.sharedRoasts) {
+        delete blend.sharedRoasts[removed.name];
+        calcPlannerItem(blend);
+      }
+    });
+  } else if (removed && removed.type === 'blend' && removed.sharedRoasts) {
+    // Removing a blend that was part of a shared roast — the shared entry
+    // no longer makes sense with only one blend left, so it's removed too
+    // and the remaining blend reverts to its own independent calc.
+    Object.values(removed.sharedRoasts).forEach(sharedId => {
+      const sharedItem = plannerItems.find(x => x.id === sharedId);
+      if (!sharedItem) return;
+      const remainingBlendIds = (sharedItem.hostedBlends || []).filter(x => x !== id);
+      remainingBlendIds.forEach(otherBlendId => {
+        const otherBlend = plannerItems.find(x => x.id === otherBlendId);
+        if (otherBlend && otherBlend.sharedRoasts) {
+          delete otherBlend.sharedRoasts[sharedItem.name];
+          calcPlannerItem(otherBlend);
+        }
+      });
+      plannerItems = plannerItems.filter(x => x.id !== sharedId);
+    });
+  }
+
   plannerItems = plannerItems.filter(x => x.id !== id);
   renderPlanner();
   renderSummary();
@@ -2418,19 +2552,19 @@ function renderPlanner() {
     if (extraEl) extraEl.value = item.extraOz || '';
   });
 
+  // Recalculate every item so its result box reflects the data that's
+  // actually there — rebuilding the entries above replaces the DOM with
+  // fresh placeholder markup, so without this any coffee that already had
+  // bags entered would visually reset to "Enter bags needed" until the
+  // person touched an input again, even though nothing was actually lost.
+  plannerItems.forEach(item => calcPlannerItem(item));
+
   renderSummary();
 }
 
 function buildPlannerEntryHTML(item) {
   const isBlend = item.type === 'blend';
-  const bagInputs = BAG_SIZES.map(bs => `
-    <div class="bag-box">
-      <div class="bag-size">${bs.label}</div>
-      <div class="bag-oz">${bs.oz} oz / bag</div>
-      <input class="bag-input" type="number" min="0" step="1" placeholder="0"
-        id="bag-${item.id}-${bs.label}"
-        oninput="updatePlannerBags('${item.id}','${bs.label}',this.value)" />
-    </div>`).join('');
+  const isShared = item.type === 'shared';
 
   const lossField = isBlend ? '' : `
     <div class="field-group">
@@ -2443,6 +2577,43 @@ function buildPlannerEntryHTML(item) {
       <input class="field-input" type="number" value="${item.maxBatch || maxBatch}" min="0.5" max="8" step="0.25"
         oninput="updatePlannerMaxBatch('${item.id}',this.value)" />
     </div>`;
+
+  if (isShared) {
+    // A shared roast has no bags of its own — its roasted need is derived
+    // entirely from the two blends it's split between after roasting.
+    const hostedNames = (item.hostedBlends || []).map(bid => {
+      const b = plannerItems.find(x => x.id === bid);
+      return b ? b.name : null;
+    }).filter(Boolean);
+    const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
+    return `<div class="planner-entry is-blend" id="pentry-${item.id}">
+      <div class="entry-head">
+        <div class="entry-head-left">
+          <span class="entry-label">🔗 Shared Roast</span>
+          <span class="entry-title">${item.name}${levelLabel}</span>
+        </div>
+        <button class="btn-ghost" onclick="removePlannerItem('${item.id}')">✕</button>
+      </div>
+      <div class="entry-body">
+        ${lossField ? `<div class="entry-controls">${lossField}<div></div></div>` : ''}
+        <div style="font-size:0.7rem;color:var(--text2);margin-bottom:10px;line-height:1.5;">
+          Roasted once, then split between <strong>${hostedNames.join('</strong> and <strong>')}</strong>.
+        </div>
+        <div class="result-box" id="result-${item.id}">
+          <div class="result-empty">Waiting on blend bag quantities…</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const bagInputs = BAG_SIZES.map(bs => `
+    <div class="bag-box">
+      <div class="bag-size">${bs.label}</div>
+      <div class="bag-oz">${bs.oz} oz / bag</div>
+      <input class="bag-input" type="number" min="0" step="1" placeholder="0"
+        id="bag-${item.id}-${bs.label}"
+        oninput="updatePlannerBags('${item.id}','${bs.label}',this.value)" />
+    </div>`).join('');
 
   return `<div class="planner-entry ${isBlend ? 'is-blend' : ''}" id="pentry-${item.id}">
     <div class="entry-head">
@@ -2471,6 +2642,16 @@ function buildPlannerEntryHTML(item) {
   </div>`;
 }
 
+function recalcSharedRoastsFor(item) {
+  // A blend feeding one or more shared-roast entries needs those entries
+  // recalculated whenever its own bags/extra oz change.
+  if (item.type !== 'blend' || !item.sharedRoasts) return;
+  Object.values(item.sharedRoasts).forEach(sharedId => {
+    const sharedItem = plannerItems.find(x => x.id === sharedId);
+    if (sharedItem) calcPlannerItem(sharedItem);
+  });
+}
+
 function updatePlannerBags(itemId, size, val) {
   const item = plannerItems.find(x => x.id === itemId);
   if (!item) return;
@@ -2489,6 +2670,7 @@ function updatePlannerBags(itemId, size, val) {
     const blendItem = plannerItems.find(x => x.id === item.combinedWith);
     if (blendItem) calcPlannerItem(blendItem);
   }
+  recalcSharedRoastsFor(item);
 
   renderSummary();
 }
@@ -2764,10 +2946,70 @@ function updatePlannerExtra(itemId, val) {
     const blendItem = plannerItems.find(x => x.id === item.combinedWith);
     if (blendItem) calcPlannerItem(blendItem);
   }
+  recalcSharedRoastsFor(item);
   renderSummary();
 }
 
+function calcSharedRoastItem(item) {
+  // A shared-roast item has no bags of its own — its roasted need is the
+  // sum of both hosted blends' contribution for this bean, recalculated
+  // fresh from each blend's current bags/extra oz.
+  const resultEl = document.getElementById(`result-${item.id}`);
+  if (!resultEl) return;
+
+  let totalRoasted = 0;
+  (item.hostedBlends || []).forEach(blendId => {
+    const blendItem = plannerItems.find(x => x.id === blendId);
+    if (!blendItem) return;
+    let blendRoastedOz = 0;
+    BAG_SIZES.forEach(bs => { blendRoastedOz += (blendItem.bags[bs.label] || 0) * bs.oz; });
+    blendRoastedOz += (blendItem.extraOz || 0);
+    if (blendRoastedOz <= 0) return;
+    const blendRoastedLbs = blendRoastedOz / 16;
+    const comp = (blendItem.components || []).find(c => c.name === item.name);
+    if (comp) totalRoasted += blendRoastedLbs * (comp.pct / 100);
+  });
+
+  if (totalRoasted <= 0) {
+    resultEl.innerHTML = '<div class="result-empty">Waiting on blend bag quantities…</div>';
+    item._greenLbs = 0;
+    item._roastedLbs = 0;
+    return;
+  }
+
+  const loss = item.loss || 18;
+  const greenLbs = totalRoasted / (1 - loss / 100);
+  const effectiveMaxBatch = item.maxBatch || maxBatch;
+  const numBatches = Math.ceil(greenLbs / effectiveMaxBatch);
+  const lbsPerBatch = greenLbs / numBatches;
+  item._greenLbs = greenLbs;
+  item._roastedLbs = totalRoasted;
+
+  const pills = Array.from({length: numBatches}, (_,i) =>
+    `<div class="bpill">Batch ${i+1}: ${(lbsPerBatch * 16).toFixed(1)} oz</div>`).join('');
+  const greenOz = greenLbs * 16;
+  const ozPerBatch = lbsPerBatch * 16;
+
+  const coffee = inventory.find(c => c.id === item.coffeeId);
+  const availableOz = coffee ? coffee.stock * 16 : null;
+  const stockWarning = (availableOz !== null && greenOz > availableOz)
+    ? `<div style="background:rgba(220,80,60,0.12);border:1px solid rgba(220,80,60,0.35);border-radius:6px;padding:8px 12px;margin-top:8px;font-size:0.72rem;color:#e05a45;">
+        ⚠️ Needs ${greenOz.toFixed(1)} oz but only ${availableOz.toFixed(1)} oz available (${(greenOz - availableOz).toFixed(1)} oz short)
+      </div>` : '';
+
+  resultEl.innerHTML = `
+    <div class="result-grid">
+      <div class="result-item"><div class="result-label">Roasted Needed</div><div class="result-val">${totalRoasted.toFixed(2)}</div><div class="result-unit">LBS</div></div>
+      <div class="result-item"><div class="result-label">Green to Charge</div><div class="result-val highlight">${greenOz.toFixed(1)}</div><div class="result-unit">OZ TOTAL</div></div>
+      <div class="result-item"><div class="result-label">Batches</div><div class="result-val highlight">${numBatches}</div><div class="result-unit">@ ${ozPerBatch.toFixed(1)} oz ea</div></div>
+    </div>
+    <div class="batch-pills">${pills}</div>
+    ${stockWarning}`;
+}
+
 function calcPlannerItem(item) {
+  if (item.type === 'shared') { calcSharedRoastItem(item); return; }
+
   const resultEl = document.getElementById(`result-${item.id}`);
   if (!resultEl) return;
 
@@ -2883,6 +3125,17 @@ function calcPlannerItem(item) {
       });
     }
 
+    // Find which components are shared with another blend's roast
+    const sharedCompNames = item.sharedRoasts ? Object.keys(item.sharedRoasts) : [];
+    const sharedPartnerName = (compName) => {
+      const sharedId = item.sharedRoasts && item.sharedRoasts[compName];
+      const sharedItem = sharedId ? plannerItems.find(x => x.id === sharedId) : null;
+      if (!sharedItem) return '';
+      const otherBlendId = (sharedItem.hostedBlends || []).find(bid => bid !== item.id);
+      const otherBlend = otherBlendId ? plannerItems.find(x => x.id === otherBlendId) : null;
+      return otherBlend ? otherBlend.name : '';
+    };
+
     const compResults = item.components.map(comp => {
       const compRoasted = roastedLbs * (comp.pct / 100);
       const compGreen = compRoasted / (1 - comp.loss / 100);
@@ -2891,9 +3144,11 @@ function calcPlannerItem(item) {
       const numBatches = Math.ceil(compGreen / compEffectiveMax);
       const lbsPerBatch = compGreen / numBatches;
       const isCombined = combinedCompNames.includes(comp.name);
-      // Only add to blend total if NOT combined with single origin
-      if (!isCombined) totalGreen += compGreen;
-      return { ...comp, compRoasted, compGreen, numBatches, lbsPerBatch, isCombined };
+      const isShared = sharedCompNames.includes(comp.name);
+      // Only add to blend total if not covered by a single-origin combine
+      // or a shared roast with another blend
+      if (!isCombined && !isShared) totalGreen += compGreen;
+      return { ...comp, compRoasted, compGreen, numBatches, lbsPerBatch, isCombined, isShared };
     });
 
     item._greenLbs = totalGreen;
@@ -2901,6 +3156,18 @@ function calcPlannerItem(item) {
     item._compResults = compResults;
 
     const compHTML = compResults.map(cr => {
+      if (cr.isShared) {
+        const partnerName = sharedPartnerName(cr.name);
+        return `<div class="breakdown-component">
+          <div>
+            <div class="bc-name">${cr.name}</div>
+            <div style="font-size:0.65rem;color:var(--accent);margin-top:2px;">🔗 Shared roast${partnerName ? ` with ${partnerName}` : ''}</div>
+          </div>
+          <div class="bc-pct">${cr.pct}%</div>
+          <div class="bc-stat"><div class="bc-stat-val">${(cr.compGreen * 16).toFixed(1)}</div><div class="bc-stat-label">oz (shared)</div></div>
+          <div class="bc-stat"><div class="bc-stat-val">—</div><div class="bc-stat-label">separate</div></div>
+        </div>`;
+      }
       if (cr.isCombined) {
         return `<div class="breakdown-component">
           <div>
@@ -3027,8 +3294,31 @@ function renderSummary() {
         </div>
         ${breakdownHTML}
       </div>`;
+    } else if (item.type === 'shared') {
+      const totalOz = item._greenLbs * 16;
+      const numBatches = Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
+      const ozEach = totalOz / numBatches;
+      const batchList = Array.from({length: numBatches}, (_,i) =>
+        `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+          <span style="color:var(--text3);font-size:0.68rem;">Batch ${i+1}</span>
+          <span style="color:var(--accent2);font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:0.04em;">${ozEach.toFixed(1)} oz</span>
+        </div>`).join('');
+      const hostedNames = (item.hostedBlends || []).map(bid => {
+        const b = plannerItems.find(x => x.id === bid);
+        return b ? b.name : null;
+      }).filter(Boolean);
+      return `<div style="margin-bottom:14px;">
+        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--text);margin-bottom:2px;font-weight:600;">${item.name}${item.roastLevel ? ` <span style="font-size:0.65rem;color:var(--text3);font-family:'DM Mono',monospace;">${item.roastLevel}</span>` : ''} <span style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">SHARED ROAST</span></div>
+        <div style="font-size:0.65rem;color:var(--accent);margin-bottom:6px;">🔗 Split between ${hostedNames.join(' + ')}</div>
+        ${batchList}
+        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;">
+          <span style="color:var(--text3);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;">Total Green</span>
+          <span style="color:var(--text2);font-family:'Bebas Neue',sans-serif;font-size:0.9rem;">${totalOz.toFixed(1)} oz</span>
+        </div>
+      </div>`;
     } else if (item._compResults) {
-      // Find which components are combined with single origins
+      // Find which components are combined with a single origin, or
+      // shared with another blend's roast
       const combinedCompNames = [];
       if (item.combinedSingles && item.combinedSingles.length > 0) {
         item.combinedSingles.forEach(singleId => {
@@ -3039,9 +3329,10 @@ function renderSummary() {
           }
         });
       }
+      const sharedCompNames = item.sharedRoasts ? Object.keys(item.sharedRoasts) : [];
 
       const compLines = item._compResults
-        .filter(cr => !combinedCompNames.includes(cr.name))
+        .filter(cr => !combinedCompNames.includes(cr.name) && !sharedCompNames.includes(cr.name))
         .map(cr => {
           const ozEach = cr.lbsPerBatch * 16;
           const totalOz = cr.compGreen * 16;
@@ -3056,9 +3347,12 @@ function renderSummary() {
           </div>`;
         }).join('');
 
-      // Note combined components
-      const combinedNote = combinedCompNames.length > 0
-        ? `<div style="font-size:0.65rem;color:var(--accent);margin-bottom:6px;">✓ ${combinedCompNames.join(', ')} combined with single origin entry</div>`
+      // Note combined/shared components
+      const noteLines = [];
+      if (combinedCompNames.length > 0) noteLines.push(`✓ ${combinedCompNames.join(', ')} combined with single origin entry`);
+      if (sharedCompNames.length > 0) noteLines.push(`🔗 ${sharedCompNames.join(', ')} on a shared roast entry`);
+      const combinedNote = noteLines.length > 0
+        ? `<div style="font-size:0.65rem;color:var(--accent);margin-bottom:6px;">${noteLines.join('<br>')}</div>`
         : '';
 
       if (!compLines && !combinedNote) return '';
@@ -3107,6 +3401,7 @@ function renderSummary() {
           <span style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3);">Total Green</span>
           <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--accent2);letter-spacing:0.04em;">${(totalGreen * 16).toFixed(1)} <span style="font-size:0.7rem;color:var(--text3);">OZ</span></span>
         </div>
+        ${buildBagsAndLabelsHTML(active, false)}
       </div>
     </div>`;
 }
@@ -3115,16 +3410,16 @@ function checkStockWarnings() {
   const active = plannerItems.filter(hasRoastOutput);
   const warnings = [];
   active.forEach(item => {
-    if (item.type === 'single') {
+    if (item.type === 'single' || item.type === 'shared') {
       const coffee = inventory.find(c => c.id === item.coffeeId);
       if (coffee && item._greenLbs > coffee.stock) {
         const shortOz = ((item._greenLbs - coffee.stock) * 16).toFixed(1);
         warnings.push(`${item.name} is ${shortOz} oz short`);
       }
     } else if (item._compResults) {
-      // Components combined with a single origin are already covered by
-      // that single origin's own stock check — skip them here to avoid
-      // warning about the same shortfall twice.
+      // Components covered by a single-origin combine or a shared roast
+      // with another blend are already checked under that entry — skip
+      // them here to avoid warning about the same shortfall twice.
       const combinedCompNames = [];
       if (item.combinedSingles && item.combinedSingles.length > 0) {
         item.combinedSingles.forEach(singleId => {
@@ -3135,8 +3430,9 @@ function checkStockWarnings() {
           }
         });
       }
+      const sharedCompNames = item.sharedRoasts ? Object.keys(item.sharedRoasts) : [];
       item._compResults.forEach(cr => {
-        if (combinedCompNames.includes(cr.name)) return;
+        if (combinedCompNames.includes(cr.name) || sharedCompNames.includes(cr.name)) return;
         const coffee = inventory.find(c => c.name === cr.name);
         if (coffee && cr.compGreen > coffee.stock) {
           const shortOz = ((cr.compGreen - coffee.stock) * 16).toFixed(1);
@@ -3155,13 +3451,13 @@ function openConfirmRoast() {
   // Build deduction map
   const deductions = {};
   active.forEach(item => {
-    if (item.type === 'single') {
+    if (item.type === 'single' || item.type === 'shared') {
       const c = inventory.find(x => x.id === item.coffeeId);
       if (c) deductions[c.id] = { name: c.name, lbs: (deductions[c.id]?.lbs || 0) + item._greenLbs };
     } else if (item._compResults) {
-      // Components combined with a single origin are already deducted
-      // under that single origin's own entry — skip here to avoid
-      // subtracting the same green weight twice.
+      // Components covered by a single-origin combine or a shared roast
+      // with another blend are already deducted under that entry — skip
+      // here to avoid subtracting the same green weight twice.
       const combinedCompNames = [];
       if (item.combinedSingles && item.combinedSingles.length > 0) {
         item.combinedSingles.forEach(singleId => {
@@ -3172,8 +3468,9 @@ function openConfirmRoast() {
           }
         });
       }
+      const sharedCompNames = item.sharedRoasts ? Object.keys(item.sharedRoasts) : [];
       item._compResults.forEach(cr => {
-        if (combinedCompNames.includes(cr.name)) return;
+        if (combinedCompNames.includes(cr.name) || sharedCompNames.includes(cr.name)) return;
         const c = inventory.find(x => x.name === cr.name);
         if (c) deductions[c.id] = { name: c.name, lbs: (deductions[c.id]?.lbs || 0) + cr.compGreen };
       });
@@ -3206,39 +3503,34 @@ function executeRoast() {
   if (!active.length) { showToast('No items to confirm'); return; }
   const today = new Date().toISOString().split('T')[0];
 
-  // Names of blend components that are combined with a single-origin
-  // planner entry, keyed by the blend item's id — used below so batch
-  // counts and per-coffee totals aren't double-counted.
-  const combinedNamesByBlend = {};
+  // Names of blend components covered by either a single-origin combine or
+  // a shared roast with another blend, keyed by the blend item's id — used
+  // below so batch counts and per-coffee totals aren't double-counted.
+  const excludedNamesByBlend = {};
   active.forEach(item => {
-    if (item.type !== 'blend' || !item.combinedSingles || !item.combinedSingles.length) return;
-    combinedNamesByBlend[item.id] = item.combinedSingles
-      .map(singleId => {
+    if (item.type !== 'blend') return;
+    const names = [];
+    if (item.combinedSingles && item.combinedSingles.length) {
+      item.combinedSingles.forEach(singleId => {
         const single = plannerItems.find(x => x.id === singleId);
         const sCoffee = single ? inventory.find(c => c.id === single.coffeeId) : null;
-        return sCoffee ? sCoffee.name : null;
-      })
-      .filter(Boolean);
+        if (sCoffee) names.push(sCoffee.name);
+      });
+    }
+    if (item.sharedRoasts) names.push(...Object.keys(item.sharedRoasts));
+    if (names.length) excludedNamesByBlend[item.id] = names;
   });
 
-  // Subtract inventory — skip blend components already handled by combined single origin
+  // Subtract inventory — skip blend components already handled by a
+  // combined single origin or a shared roast entry
   active.forEach(item => {
-    if (item.type === 'single') {
+    if (item.type === 'single' || item.type === 'shared') {
       const c = inventory.find(x => x.id === item.coffeeId);
       if (c) c.stock = parseFloat((c.stock - item._greenLbs).toFixed(2));
     } else if (item._compResults) {
-      const combinedCompNames = [];
-      if (item.combinedSingles && item.combinedSingles.length > 0) {
-        item.combinedSingles.forEach(singleId => {
-          const single = plannerItems.find(x => x.id === singleId);
-          if (single) {
-            const sCoffee = inventory.find(c => c.id === single.coffeeId);
-            if (sCoffee) combinedCompNames.push(sCoffee.name);
-          }
-        });
-      }
+      const excludedNames = excludedNamesByBlend[item.id] || [];
       item._compResults.forEach(cr => {
-        if (!combinedCompNames.includes(cr.name)) {
+        if (!excludedNames.includes(cr.name)) {
           const c = inventory.find(x => x.name === cr.name);
           if (c) c.stock = parseFloat((c.stock - cr.compGreen).toFixed(2));
         }
@@ -3249,11 +3541,11 @@ function executeRoast() {
   // Log the session
   const totalGreen = active.reduce((s,x) => s + x._greenLbs, 0);
   const totalBatches = active.reduce((s, item) => {
-    if (item.type === 'single') return s + Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
+    if (item.type === 'single' || item.type === 'shared') return s + Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
     if (item._compResults) {
-      const combinedNames = combinedNamesByBlend[item.id] || [];
+      const excludedNames = excludedNamesByBlend[item.id] || [];
       return s + item._compResults
-        .filter(cr => !combinedNames.includes(cr.name))
+        .filter(cr => !excludedNames.includes(cr.name))
         .reduce((bs, cr) => bs + cr.numBatches, 0);
     }
     return s;
@@ -3269,11 +3561,11 @@ function executeRoast() {
 
   const coffeeEntries = {};
   active.forEach(item => {
-    if (item.type === 'single') coffeeEntries[item.name] = (coffeeEntries[item.name] || 0) + item._greenLbs;
+    if (item.type === 'single' || item.type === 'shared') coffeeEntries[item.name] = (coffeeEntries[item.name] || 0) + item._greenLbs;
     else if (item._compResults) {
-      const combinedNames = combinedNamesByBlend[item.id] || [];
+      const excludedNames = excludedNamesByBlend[item.id] || [];
       item._compResults.forEach(cr => {
-        if (combinedNames.includes(cr.name)) return;
+        if (excludedNames.includes(cr.name)) return;
         coffeeEntries[cr.name] = (coffeeEntries[cr.name] || 0) + cr.compGreen;
       });
     }
@@ -3281,7 +3573,7 @@ function executeRoast() {
 
   // Update lastRoasted on each coffee
   active.forEach(item => {
-    if (item.type === 'single') {
+    if (item.type === 'single' || item.type === 'shared') {
       const c = inventory.find(x => x.id === item.coffeeId);
       if (c) c.lastRoasted = today;
     } else if (item._compResults) {
@@ -3320,6 +3612,60 @@ function executeRoast() {
   }
 }
 
+function buildBagsAndLabelsHTML(active, forPrint) {
+  const textColor = forPrint ? '#000' : 'var(--text)';
+  const subColor = forPrint ? '#555' : 'var(--text3)';
+  const accentColor = forPrint ? '#000' : 'var(--accent2)';
+  const rowBorder = forPrint ? '#eee' : 'rgba(0,0,0,0.06)';
+
+  const rowItems = active.filter(item =>
+    BAG_SIZES.some(bs => (item.bags[bs.label] || 0) > 0) || (item.extraOz || 0) > 0
+  );
+
+  if (!rowItems.length) return '';
+
+  const rows = rowItems.map(item => {
+    const parts = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`);
+    if (item.extraOz > 0) parts.push(`${item.extraOz} oz extra`);
+    const label = (item.type === 'single' && item.roastLevel) ? `${item.name} — ${item.roastLevel}` : item.name;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${rowBorder};">
+      <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '8px'};">
+        ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+        <span style="color:${textColor};font-size:0.8rem;">${label}</span>
+      </div>
+      <span style="color:${accentColor};font-size:0.78rem;font-weight:600;white-space:nowrap;">${parts.join(', ')}</span>
+    </div>`;
+  }).join('');
+
+  // Grand totals across every item — 8oz and 12oz share the same physical
+  // bag, so their counts are merged into one number here.
+  const totals = {};
+  BAG_SIZES.forEach(bs => { totals[bs.label] = 0; });
+  let totalExtraOz = 0;
+  active.forEach(item => {
+    BAG_SIZES.forEach(bs => { totals[bs.label] += (item.bags[bs.label] || 0); });
+    totalExtraOz += (item.extraOz || 0);
+  });
+
+  const grandParts = [];
+  const sharedBagCount = (totals['8oz'] || 0) + (totals['12oz'] || 0);
+  if (sharedBagCount > 0) grandParts.push(`${sharedBagCount} bags (8oz/12oz)`);
+  ['4oz', '2lb', '5lb'].forEach(label => {
+    if (totals[label] > 0) grandParts.push(`${totals[label]}×${label}`);
+  });
+  if (totalExtraOz > 0) grandParts.push(`${totalExtraOz.toFixed(1)} oz extra`);
+
+  return `
+    <div style="margin-top:${forPrint ? '20px' : '16px'};padding-top:14px;border-top:2px solid ${textColor};">
+      <div style="font-size:0.85rem;font-weight:bold;letter-spacing:0.06em;text-transform:uppercase;color:${textColor};margin-bottom:10px;">Bags & Labels Needed</div>
+      ${rows}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;">
+        <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:${subColor};">Grand Total</span>
+        <span style="font-weight:bold;font-size:0.95rem;color:${accentColor};">${grandParts.join(' · ')}</span>
+      </div>
+    </div>`;
+}
+
 function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
   const textColor = forPrint ? '#000' : 'var(--text)';
   const subColor = forPrint ? '#555' : 'var(--text3)';
@@ -3338,10 +3684,6 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           </div>
           <span style="color:${accentColor};font-weight:bold;font-size:0.9rem;">${ozEach.toFixed(1)} oz</span>
         </div>`).join('');
-      const bagLines = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`);
-      if (item.extraOz > 0) bagLines.push(`${item.extraOz} oz extra`);
-      const bagSummary = bagLines.join('  |  ');
-
       // Roasted split for combined entries
       let splitHTML = '';
       if (item.combinedWith) {
@@ -3371,7 +3713,55 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
       return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}</div>
-        ${forPrint && bagSummary ? `<div style="font-size:0.72rem;color:${subColor};margin-bottom:6px;letter-spacing:0.02em;">${bagSummary}</div>` : ''}
+        ${batches}
+        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+          <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
+          <span style="color:${subColor};font-size:0.78rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
+        </div>
+        ${splitHTML}
+      </div>`;
+    } else if (item.type === 'shared') {
+      const totalOz = item._greenLbs * 16;
+      const numBatches = Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
+      const ozEach = totalOz / numBatches;
+      const batches = Array.from({length: numBatches}, (_,i) =>
+        `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #ddd;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
+          <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
+            ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+            <span style="color:${subColor};font-size:0.78rem;">Batch ${i+1}</span>
+          </div>
+          <span style="color:${accentColor};font-weight:bold;font-size:0.9rem;">${ozEach.toFixed(1)} oz</span>
+        </div>`).join('');
+
+      const hostedNames = (item.hostedBlends || []).map(bid => {
+        const b = active.find(x => x.id === bid) || plannerItems.find(x => x.id === bid);
+        return b ? b.name : null;
+      }).filter(Boolean);
+
+      // Post-roast split: how much of this shared roast goes to each blend
+      let splitHTML = '';
+      const splitParts = (item.hostedBlends || []).map(bid => {
+        const blendItem = active.find(x => x.id === bid) || plannerItems.find(x => x.id === bid);
+        const compResult = blendItem?._compResults?.find(cr => cr.name === item.name);
+        if (!blendItem || !compResult) return '';
+        return `<div style="display:flex;justify-content:space-between;font-size:0.72rem;padding:2px 0;">
+          <span style="color:${subColor};">→ ${blendItem.name}</span>
+          <span style="color:${forPrint ? '#333' : accentColor};font-weight:bold;">${(compResult.compRoasted * 16).toFixed(1)} oz</span>
+        </div>`;
+      });
+      if (splitParts.some(Boolean)) {
+        const splitBorderColor = forPrint ? '#ccc' : 'rgba(0,0,0,0.1)';
+        splitHTML = `
+          <div style="border-top:1px dashed ${splitBorderColor};margin-top:6px;padding-top:6px;">
+            <div style="font-size:0.62rem;color:${subColor};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Post-roast split</div>
+            ${splitParts.join('')}
+          </div>`;
+      }
+
+      const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
+        <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:2px;">${item.name}${levelLabel} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">SHARED ROAST</span></div>
+        ${hostedNames.length ? `<div style="font-size:0.68rem;color:${subColor};margin-bottom:6px;">🔗 Split between ${hostedNames.join(' + ')}</div>` : ''}
         ${batches}
         <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
           <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
@@ -3380,7 +3770,8 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
         ${splitHTML}
       </div>`;
     } else if (item._compResults) {
-      // Skip components combined with single origin
+      // Skip components combined with a single origin, or shared with
+      // another blend's roast — both get their own entry above/below
       const combinedCompNames = [];
       if (item.combinedSingles && item.combinedSingles.length > 0) {
         item.combinedSingles.forEach(singleId => {
@@ -3391,9 +3782,10 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           }
         });
       }
+      const sharedCompNames = item.sharedRoasts ? Object.keys(item.sharedRoasts) : [];
 
       const compLines = item._compResults
-        .filter(cr => !combinedCompNames.includes(cr.name))
+        .filter(cr => !combinedCompNames.includes(cr.name) && !sharedCompNames.includes(cr.name))
         .map(cr => {
           const ozEach = cr.lbsPerBatch * 16;
           const totalOz = cr.compGreen * 16;
@@ -3411,15 +3803,16 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           </div>`;
         }).join('');
 
-      const blendBagLines = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`);
-      if (item.extraOz > 0) blendBagLines.push(`${item.extraOz} oz extra`);
-      const blendBagSummary = blendBagLines.join('  |  ');
-
-      const combinedNote = combinedCompNames.length > 0
-        ? `<div style="font-size:0.65rem;color:${subColor};margin-bottom:6px;font-style:italic;">✓ ${combinedCompNames.join(', ')} combined with single origin entry</div>`
+      const noteLines = [];
+      if (combinedCompNames.length > 0) noteLines.push(`✓ ${combinedCompNames.join(', ')} combined with single origin entry`);
+      if (sharedCompNames.length > 0) noteLines.push(`🔗 ${sharedCompNames.join(', ')} on a shared roast entry — see set-aside amount below`);
+      const combinedNote = noteLines.length > 0
+        ? `<div style="font-size:0.65rem;color:${subColor};margin-bottom:6px;font-style:italic;">${noteLines.join('<br>')}</div>`
         : '';
 
-      // Build post-roast assembly section for print
+      // Build post-roast assembly section for print — combined single
+      // origin only (shared-roast set-aside is shown on the shared entry
+      // itself, since one shared roast can feed two blends)
       let assemblyHTML = '';
       if (forPrint && combinedCompNames.length > 0) {
         const assemblyLines = item._compResults
@@ -3428,14 +3821,16 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
             <span style="color:#555;font-size:0.75rem;">→ Set aside from ${cr.name}</span>
             <span style="font-weight:bold;font-size:0.85rem;">${(cr.compRoasted * 16).toFixed(1)} oz roasted</span>
           </div>`).join('');
-        const totalBlendRoasted = item._compResults.reduce((s, cr) => s + cr.compRoasted, 0) * 16;
+        const totalCombinedRoasted = item._compResults
+          .filter(cr => combinedCompNames.includes(cr.name))
+          .reduce((s, cr) => s + cr.compRoasted, 0) * 16;
         assemblyHTML = `
           <div style="margin-top:8px;padding:8px 10px;background:#f5f5f5;border-radius:6px;border:1px solid #ddd;">
             <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:6px;font-weight:600;">Post-roast — set aside for ${item.name}</div>
             ${assemblyLines}
             <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid #ccc;">
               <span style="font-size:0.7rem;color:#333;font-weight:bold;">Total into blend</span>
-              <span style="font-weight:bold;font-size:0.9rem;">${totalBlendRoasted.toFixed(1)} oz</span>
+              <span style="font-weight:bold;font-size:0.9rem;">${totalCombinedRoasted.toFixed(1)} oz</span>
             </div>
           </div>`;
       }
@@ -3443,7 +3838,6 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       if (!compLines && !combinedNote) return '';
       return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${accentColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">BLEND</span></div>
-        ${forPrint && blendBagSummary ? `<div style="font-size:0.72rem;color:${subColor};margin-bottom:6px;letter-spacing:0.02em;">${blendBagSummary}</div>` : ''}
         ${combinedNote}
         ${compLines}
         ${assemblyHTML}
@@ -3478,7 +3872,8 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           return s;
         }, 0)}</span>
       </div>
-    </div>`;
+    </div>
+    ${buildBagsAndLabelsHTML(active, forPrint)}`;
 }
 
 let _printActive = [];
