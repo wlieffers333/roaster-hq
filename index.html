@@ -389,6 +389,69 @@ nav {
   justify-content: flex-end;
 }
 
+/* ── HISTORY ── */
+.history-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  animation: fadeUp 0.25s ease;
+  transition: border-color 0.2s;
+}
+.history-card:hover { border-color: var(--border2); }
+
+.history-header {
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.history-date { font-family: 'Lora', serif; font-size: 0.95rem; font-weight: 600; color: var(--text); }
+.history-meta { font-size: 0.62rem; color: var(--text3); letter-spacing: 0.06em; margin-top: 2px; }
+
+.history-totals { text-align: right; }
+.history-green { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; color: var(--accent2); line-height: 1; }
+.history-green-unit { font-size: 0.58rem; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+
+.history-body { padding: 12px 18px; }
+.history-coffee-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 0.75rem;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border);
+}
+.history-coffee-row:last-child { border-bottom: none; }
+.history-coffee-val { color: var(--text); font-weight: 500; }
+
+.history-bags {
+  font-size: 0.65rem;
+  color: var(--text3);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  letter-spacing: 0.02em;
+}
+
+.history-actions {
+  padding: 9px 18px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.history-no-snapshot {
+  font-size: 0.62rem;
+  color: var(--text3);
+  font-style: italic;
+}
+
 /* ── PLANNER ── */
 .planner-entry {
   background: var(--surface);
@@ -1087,6 +1150,7 @@ nav {
     <button class="nav-tab" onclick="showPage('inventory')" id="tab-inventory"><span class="tab-icon">📦</span><span class="tab-text">Inventory</span></button>
     <button class="nav-tab" onclick="showPage('blends')"><span class="tab-icon">🔀</span><span class="tab-text">Blends</span></button>
     <button class="nav-tab" onclick="showPage('planner')"><span class="tab-icon">🔥</span><span class="tab-text">Roast Planner</span></button>
+    <button class="nav-tab" onclick="showPage('history')"><span class="tab-icon">🕘</span><span class="tab-text">History</span></button>
     <div style="display:flex;gap:6px;margin-left:auto;padding:6px 8px;align-items:center;">
       <button class="btn btn-secondary btn-sm" onclick="exportData()" style="font-size:0.65rem;">⬇ Export</button>
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-file').click()" style="font-size:0.65rem;">⬆ Import</button>
@@ -1236,6 +1300,25 @@ nav {
     <div class="empty-sub">Add single origins or blends to plan your roast day</div>
   </div>
   <div id="planner-summary" style="display:none"></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     HISTORY PAGE
+══════════════════════════════════════ -->
+<div class="page" id="page-history">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Roast History</div>
+      <div class="page-subtitle">Last 7 roast days · reprint the batch sheet anytime</div>
+    </div>
+  </div>
+  <div class="list" id="history-list">
+    <div class="empty">
+      <div class="empty-icon">🕘</div>
+      <div class="empty-title">No roasts logged yet</div>
+      <div class="empty-sub">Confirmed roasts will show up here</div>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════
@@ -1717,6 +1800,7 @@ function showPage(name) {
   event.currentTarget.classList.add('active');
   if (name === 'planner') { renderPlanner(); updateQueueUI(); }
   if (name === 'dashboard') renderDashboard();
+  if (name === 'history') renderHistory();
 }
 
 let cfUnit = 'lbs';
@@ -1824,6 +1908,7 @@ function renderAll() {
   renderBlends();
   renderPlanner();
   renderDashboard();
+  renderHistory();
   updatePlannerDate();
 }
 
@@ -3590,7 +3675,12 @@ function executeRoast() {
     totalGreen,
     totalBatches,
     bagTotals,
-    coffees: coffeeEntries
+    coffees: coffeeEntries,
+    printDate: new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' }),
+    // Full snapshot of every roast/blend/shared item as it was at confirm
+    // time, so History can reprint the exact original sheet later instead
+    // of reconstructing an approximation from the coarse totals above.
+    items: JSON.parse(JSON.stringify(active))
   });
 
   save();
@@ -3614,9 +3704,12 @@ function executeRoast() {
 
 function buildBagsAndLabelsHTML(active, forPrint) {
   const textColor = forPrint ? '#000' : 'var(--text)';
-  const subColor = forPrint ? '#555' : 'var(--text3)';
+  // Thermal printers often can't render a mid-gray reliably — it prints
+  // faint, patchy, or not at all — so print mode uses solid black
+  // everywhere and leans on weight/spacing instead of color for hierarchy.
+  const subColor = forPrint ? '#000' : 'var(--text3)';
   const accentColor = forPrint ? '#000' : 'var(--accent2)';
-  const rowBorder = forPrint ? '#eee' : 'rgba(0,0,0,0.06)';
+  const rowBorder = forPrint ? '#000' : 'rgba(0,0,0,0.06)';
 
   const rowItems = active.filter(item =>
     BAG_SIZES.some(bs => (item.bags[bs.label] || 0) > 0) || (item.extraOz || 0) > 0
@@ -3668,7 +3761,10 @@ function buildBagsAndLabelsHTML(active, forPrint) {
 
 function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
   const textColor = forPrint ? '#000' : 'var(--text)';
-  const subColor = forPrint ? '#555' : 'var(--text3)';
+  // Thermal printers often can't render a mid-gray reliably — it prints
+  // faint, patchy, or not at all — so print mode uses solid black
+  // everywhere and leans on weight/spacing instead of color for hierarchy.
+  const subColor = forPrint ? '#000' : 'var(--text3)';
   const accentColor = forPrint ? '#000' : 'var(--accent2)';
 
   const items = active.map(item => {
@@ -3677,7 +3773,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const numBatches = Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
       const ozEach = totalOz / numBatches;
       const batches = Array.from({length: numBatches}, (_,i) =>
-        `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #ddd;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
+        `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #000;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
           <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
             ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
             <span style="color:${subColor};font-size:0.78rem;">Batch ${i+1}</span>
@@ -3693,8 +3789,8 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
         if (compResult) {
           const soRoastedOz = (item._roastedLbs - compResult.compRoasted) * 16;
           const blendRoastedOz = compResult.compRoasted * 16;
-          const splitBorderColor = forPrint ? '#ccc' : 'rgba(0,0,0,0.1)';
-          const splitAccent = forPrint ? '#333' : accentColor;
+          const splitBorderColor = forPrint ? '#000' : 'rgba(0,0,0,0.1)';
+          const splitAccent = forPrint ? '#000' : accentColor;
           splitHTML = `
             <div style="border-top:1px dashed ${splitBorderColor};margin-top:6px;padding-top:6px;">
               <div style="font-size:0.62rem;color:${subColor};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Roasted split</div>
@@ -3711,10 +3807,10 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       }
 
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}</div>
         ${batches}
-        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#000' : 'rgba(0,0,0,0.06)'};">
           <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
           <span style="color:${subColor};font-size:0.78rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
         </div>
@@ -3725,7 +3821,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const numBatches = Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
       const ozEach = totalOz / numBatches;
       const batches = Array.from({length: numBatches}, (_,i) =>
-        `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #ddd;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
+        `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #000;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
           <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
             ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
             <span style="color:${subColor};font-size:0.78rem;">Batch ${i+1}</span>
@@ -3746,11 +3842,11 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
         if (!blendItem || !compResult) return '';
         return `<div style="display:flex;justify-content:space-between;font-size:0.72rem;padding:2px 0;">
           <span style="color:${subColor};">→ ${blendItem.name}</span>
-          <span style="color:${forPrint ? '#333' : accentColor};font-weight:bold;">${(compResult.compRoasted * 16).toFixed(1)} oz</span>
+          <span style="color:${forPrint ? '#000' : accentColor};font-weight:bold;">${(compResult.compRoasted * 16).toFixed(1)} oz</span>
         </div>`;
       });
       if (splitParts.some(Boolean)) {
-        const splitBorderColor = forPrint ? '#ccc' : 'rgba(0,0,0,0.1)';
+        const splitBorderColor = forPrint ? '#000' : 'rgba(0,0,0,0.1)';
         splitHTML = `
           <div style="border-top:1px dashed ${splitBorderColor};margin-top:6px;padding-top:6px;">
             <div style="font-size:0.62rem;color:${subColor};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Post-roast split</div>
@@ -3759,11 +3855,11 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       }
 
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:2px;">${item.name}${levelLabel} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">SHARED ROAST</span></div>
         ${hostedNames.length ? `<div style="font-size:0.68rem;color:${subColor};margin-bottom:6px;">🔗 Split between ${hostedNames.join(' + ')}</div>` : ''}
         ${batches}
-        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+        <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#000' : 'rgba(0,0,0,0.06)'};">
           <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
           <span style="color:${subColor};font-size:0.78rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
         </div>
@@ -3797,7 +3893,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
               </div>
               <span style="color:${accentColor};font-weight:bold;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
             </div>`).join('');
-          return batches + `<div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;border-top:1px solid ${forPrint ? '#eee' : 'rgba(0,0,0,0.06)'};">
+          return batches + `<div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;border-top:1px solid ${forPrint ? '#000' : 'rgba(0,0,0,0.06)'};">
             <span style="color:${subColor};font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;">Total ${cr.name}</span>
             <span style="color:${subColor};font-size:0.75rem;font-weight:bold;">${totalOz.toFixed(1)} oz</span>
           </div>`;
@@ -3812,31 +3908,33 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
 
       // Build post-roast assembly section for print — combined single
       // origin only (shared-roast set-aside is shown on the shared entry
-      // itself, since one shared roast can feed two blends)
+      // itself, since one shared roast can feed two blends). No background
+      // fill here — thermal printers render light fills inconsistently, so
+      // this uses a solid black border box instead to stay crisp.
       let assemblyHTML = '';
       if (forPrint && combinedCompNames.length > 0) {
         const assemblyLines = item._compResults
           .filter(cr => combinedCompNames.includes(cr.name))
-          .map(cr => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ddd;">
-            <span style="color:#555;font-size:0.75rem;">→ Set aside from ${cr.name}</span>
+          .map(cr => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #000;">
+            <span style="color:#000;font-size:0.75rem;">→ Set aside from ${cr.name}</span>
             <span style="font-weight:bold;font-size:0.85rem;">${(cr.compRoasted * 16).toFixed(1)} oz roasted</span>
           </div>`).join('');
         const totalCombinedRoasted = item._compResults
           .filter(cr => combinedCompNames.includes(cr.name))
           .reduce((s, cr) => s + cr.compRoasted, 0) * 16;
         assemblyHTML = `
-          <div style="margin-top:8px;padding:8px 10px;background:#f5f5f5;border-radius:6px;border:1px solid #ddd;">
-            <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:6px;font-weight:600;">Post-roast — set aside for ${item.name}</div>
+          <div style="margin-top:8px;padding:8px 10px;border-radius:6px;border:1.5px solid #000;">
+            <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:#000;margin-bottom:6px;font-weight:600;">Post-roast — set aside for ${item.name}</div>
             ${assemblyLines}
-            <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid #ccc;">
-              <span style="font-size:0.7rem;color:#333;font-weight:bold;">Total into blend</span>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid #000;">
+              <span style="font-size:0.7rem;color:#000;font-weight:bold;">Total into blend</span>
               <span style="font-weight:bold;font-size:0.9rem;">${totalCombinedRoasted.toFixed(1)} oz</span>
             </div>
           </div>`;
       }
 
       if (!compLines && !combinedNote) return '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #eee;padding-bottom:12px;' : ''}">
+      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${accentColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">BLEND</span></div>
         ${combinedNote}
         ${compLines}
@@ -4203,11 +4301,73 @@ function renderDashBreakdown(periodLogs, periodLabel, limit = null) {
 }
 
 // ─────────────────────────────────────────
-// CLOSE MODALS ON OVERLAY CLICK
+// HISTORY
 // ─────────────────────────────────────────
-document.querySelectorAll('.overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
-});
+function renderHistory() {
+  const listEl = document.getElementById('history-list');
+  if (!listEl) return;
+
+  if (!roastLog.length) {
+    listEl.innerHTML = `<div class="empty"><div class="empty-icon">🕘</div><div class="empty-title">No roasts logged yet</div><div class="empty-sub">Confirmed roasts will show up here</div></div>`;
+    return;
+  }
+
+  // roastLog loads oldest-first from Supabase — take the most recent 7
+  // and show newest at the top.
+  const recent = [...roastLog].slice(-7).reverse();
+
+  listEl.innerHTML = recent.map(entry => {
+    const dateLabel = entry.printDate || fmtDate(entry.date);
+    const coffeeRows = Object.entries(entry.coffees || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, lbs]) => `<div class="history-coffee-row"><span>${name}</span><span class="history-coffee-val">${(lbs * 16).toFixed(1)} oz</span></div>`)
+      .join('');
+
+    const bagParts = [];
+    if (entry.bagTotals) {
+      const shared = (entry.bagTotals['8oz'] || 0) + (entry.bagTotals['12oz'] || 0);
+      if (shared > 0) bagParts.push(`${shared} bags (8oz/12oz)`);
+      ['4oz', '2lb', '5lb'].forEach(label => {
+        if (entry.bagTotals[label] > 0) bagParts.push(`${entry.bagTotals[label]}×${label}`);
+      });
+    }
+
+    const hasSnapshot = Array.isArray(entry.items) && entry.items.length > 0;
+    const actionsHTML = hasSnapshot
+      ? `<button class="btn btn-primary btn-sm" onclick="reprintRoastLog('${entry.id}')">🖨 Reprint</button>`
+      : `<span class="history-no-snapshot">Detailed reprint not available for this roast</span>`;
+
+    return `<div class="history-card">
+      <div class="history-header">
+        <div>
+          <div class="history-date">${dateLabel}</div>
+          <div class="history-meta">${entry.totalBatches || 0} batch${entry.totalBatches === 1 ? '' : 'es'}</div>
+        </div>
+        <div class="history-totals">
+          <div class="history-green">${((entry.totalGreen || 0) * 16).toFixed(1)}</div>
+          <div class="history-green-unit">oz green</div>
+        </div>
+      </div>
+      <div class="history-body">
+        ${coffeeRows}
+        ${bagParts.length ? `<div class="history-bags">${bagParts.join(' · ')}</div>` : ''}
+      </div>
+      <div class="history-actions">${actionsHTML}</div>
+    </div>`;
+  }).join('');
+}
+
+function reprintRoastLog(logId) {
+  const entry = roastLog.find(r => r.id === logId);
+  if (!entry || !Array.isArray(entry.items) || !entry.items.length) {
+    showToast('No detailed snapshot saved for this roast');
+    return;
+  }
+  const dateLabel = entry.printDate || fmtDate(entry.date);
+  showPrintModal(entry.items, entry.totalGreen, dateLabel);
+}
+
+
 
 // Expose add coffee button
 document.querySelector('#page-inventory .btn-primary').addEventListener('click', openModal_addCoffee);
