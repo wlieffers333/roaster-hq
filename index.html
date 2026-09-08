@@ -1351,7 +1351,7 @@ nav {
         <div class="form-group">
           <label class="form-label">Stock *</label>
           <div style="display:flex;gap:0;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-            <input style="background:transparent;border:none;color:var(--text);font-family:'DM Mono',monospace;font-size:0.82rem;padding:9px 12px;outline:none;flex:1;width:100%;" type="number" min="0" step="0.1" placeholder="e.g. 50" id="cf-stock" oninput="calcCPL()" />
+            <input style="background:transparent;border:none;color:var(--text);font-family:'DM Mono',monospace;font-size:0.82rem;padding:9px 12px;outline:none;flex:1;width:100%;" type="number" min="0" step="0.1" placeholder="e.g. 50" id="cf-stock" />
             <div style="display:flex;border-left:1px solid var(--border);flex-shrink:0;">
               <button class="utbtn active" id="cf-unit-lbs" onclick="setCfUnit('lbs')" type="button">lbs</button>
               <button class="utbtn" id="cf-unit-kg" onclick="setCfUnit('kg')" type="button">kg</button>
@@ -1360,13 +1360,14 @@ nav {
           <div id="cf-stock-converted" style="font-size:0.62rem;color:var(--text3);margin-top:4px;min-height:14px;"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">Total Paid ($)</label>
-          <input class="form-input" id="cf-paid" type="number" min="0" step="0.01" placeholder="e.g. 258.00" oninput="calcCPL()" />
+          <label class="form-label">Total Paid ($) <span style="color:var(--text3);font-size:0.65rem;">— optional, recalculates cost/lb</span></label>
+          <input class="form-input" id="cf-paid" type="number" min="0" step="0.01" placeholder="Leave blank to keep current cost/lb" oninput="calcCPL()" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Cost per lb (auto-calculated)</label>
-        <input class="form-input" id="cf-cost" type="number" readonly style="opacity:0.6;cursor:default" placeholder="—" />
+        <label class="form-label">Cost per lb ($)</label>
+        <input class="form-input" id="cf-cost" type="number" min="0" step="0.01" placeholder="—" />
+        <div style="font-size:0.62rem;color:var(--text3);margin-top:4px;">Editable directly, or filled in automatically if you enter Total Paid above. Changing Stock alone never touches this.</div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1425,6 +1426,37 @@ nav {
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('modal-restock')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmRestock()">Add Stock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove Stock (sale, waste, correction — never touches cost/lb) -->
+<div class="overlay" id="modal-remove-stock">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head">
+      <div class="modal-title">Remove Stock</div>
+      <button class="modal-close" onclick="closeModal('modal-remove-stock')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:0.72rem;color:var(--text2);margin-bottom:14px;padding:8px 12px;background:var(--surface2);border-radius:6px;" id="remove-stock-info"></div>
+      <div class="form-group">
+        <label class="form-label">Amount to Remove (lbs) *</label>
+        <input class="form-input" id="rm-amount" type="number" min="0" step="0.1" placeholder="e.g. 5" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason</label>
+        <select class="form-input" id="rm-reason">
+          <option>Sold green coffee</option>
+          <option>Waste / spoilage</option>
+          <option>Inventory correction</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div style="font-size:0.65rem;color:var(--text3);">This only subtracts stock — cost/lb is never affected.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('modal-remove-stock')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmRemoveStock()">Remove Stock</button>
     </div>
   </div>
 </div>
@@ -1830,7 +1862,12 @@ function calcCPL() {
     convEl.textContent = '';
   }
 
-  document.getElementById('cf-cost').value = (lbs > 0 && p > 0) ? (p/lbs).toFixed(2) : '';
+  // Only recalculate cost/lb when there's an actual Total Paid amount to
+  // work from — leaving Paid blank (the normal case when just correcting
+  // a stock quantity) must never overwrite or clear an existing cost/lb.
+  if (lbs > 0 && p > 0) {
+    document.getElementById('cf-cost').value = (p / lbs).toFixed(2);
+  }
 }
 
 function fmtDate(d) {
@@ -1976,7 +2013,7 @@ function renderInventory() {
       <div class="card-actions">
         ${c.archived
           ? '<button class="btn btn-secondary btn-sm" onclick="unarchiveCoffee(\''+c.id+'\')">↩ Unarchive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
-          : '<button class="btn btn-secondary btn-sm" onclick="openRestock(\''+c.id+'\')">+ Restock</button><button class="btn btn-secondary btn-sm" onclick="openCalcLoss(\''+c.id+'\')">% Calc Loss</button><button class="btn btn-secondary btn-sm" onclick="openTransfer(\''+c.id+'\')">⇄ Transfer</button><button class="btn btn-secondary btn-sm" onclick="openRoastProfiles(\''+c.id+'\')">☕ Roast Levels</button><button class="btn btn-secondary btn-sm" onclick="openCuppingNotes(\''+c.id+'\')">✎ Cup Notes</button><button class="btn btn-secondary btn-sm" onclick="openEditCoffee(\''+c.id+'\')">Edit</button><button class="btn btn-secondary btn-sm" onclick="archiveCoffee(\''+c.id+'\')">Archive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
+          : '<button class="btn btn-secondary btn-sm" onclick="openRestock(\''+c.id+'\')">+ Restock</button><button class="btn btn-secondary btn-sm" onclick="openRemoveStock(\''+c.id+'\')">− Remove Stock</button><button class="btn btn-secondary btn-sm" onclick="openCalcLoss(\''+c.id+'\')">% Calc Loss</button><button class="btn btn-secondary btn-sm" onclick="openTransfer(\''+c.id+'\')">⇄ Transfer</button><button class="btn btn-secondary btn-sm" onclick="openRoastProfiles(\''+c.id+'\')">☕ Roast Levels</button><button class="btn btn-secondary btn-sm" onclick="openCuppingNotes(\''+c.id+'\')">✎ Cup Notes</button><button class="btn btn-secondary btn-sm" onclick="openEditCoffee(\''+c.id+'\')">Edit</button><button class="btn btn-secondary btn-sm" onclick="archiveCoffee(\''+c.id+'\')">Archive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
         }
       </div>
     </div>`;
@@ -2034,7 +2071,11 @@ function openEditCoffee(id) {
   document.getElementById('cf-stock-converted').textContent = '';
   document.getElementById('cf-loss').value = c.defaultLoss || 18;
   document.getElementById('cf-maxbatch').value = c.maxBatch || '';
-  document.getElementById('cf-paid').value = c.cost ? (c.cost * c.stock).toFixed(2) : '';
+  // Total Paid is left blank on edit — it's a one-time convenience for
+  // deriving cost/lb, not a running total, so it should never be
+  // back-filled from current stock (that previously caused editing Stock
+  // alone to silently distort cost/lb).
+  document.getElementById('cf-paid').value = '';
   document.getElementById('cf-cost').value = c.cost || '';
   document.getElementById('cf-process').value = c.process || '';
   document.getElementById('cf-threshold').value = c.threshold || 10;
@@ -2100,6 +2141,30 @@ function confirmRestock() {
   if (nd) c.dateReceived = nd;
   save(); renderInventory(); closeModal('modal-restock');
   showToast(`Restocked ${c.name} +${amt} lbs`);
+}
+
+let removeStockId = null;
+
+function openRemoveStock(id) {
+  removeStockId = id;
+  const c = inventory.find(x => x.id === id);
+  document.getElementById('remove-stock-info').textContent = `${c.name} — Current stock: ${c.stock.toFixed(1)} lbs`;
+  document.getElementById('rm-amount').value = '';
+  document.getElementById('rm-reason').value = 'Sold green coffee';
+  openModal('modal-remove-stock');
+}
+
+function confirmRemoveStock() {
+  const amt = parseFloat(document.getElementById('rm-amount').value);
+  if (!amt || amt <= 0) { showToast('Enter a valid amount'); return; }
+  const c = inventory.find(x => x.id === removeStockId);
+  if (amt > c.stock) { showToast(`Only ${c.stock.toFixed(1)} lbs in stock`); return; }
+  const reason = document.getElementById('rm-reason').value;
+  // Subtracts stock only — cost/lb is a per-pound figure and has nothing
+  // to do with how much is left, so it's never touched here.
+  c.stock = parseFloat((c.stock - amt).toFixed(2));
+  save(); renderInventory(); closeModal('modal-remove-stock');
+  showToast(`Removed ${amt} lbs from ${c.name} (${reason})`);
 }
 
 function deleteCoffee(id) {
