@@ -1815,6 +1815,18 @@ async function load() {
 // ─────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
+function sanitizeLossPct(rawValue, fallback = 18) {
+  // A roast-loss % feeds every green-weight calculation downstream as
+  // 1 - loss/100, so an out-of-range value (a stray extra digit, a
+  // decimal-point typo like "170" instead of "17.0") produces a zero or
+  // negative denominator and silently corrupts every batch/inventory
+  // number for that coffee. Anything outside a sane 0–100% range falls
+  // back to the given default instead of being saved as-is.
+  const n = parseFloat(rawValue);
+  if (!isFinite(n) || n <= 0 || n >= 100) return fallback;
+  return n;
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1923,12 +1935,40 @@ function importData(input) {
       if (!Array.isArray(data.inventory)) {
         showToast('Invalid backup file'); return;
       }
+
+      const confirmed = confirm(
+        'Importing will replace your current inventory, blends, and roast history with the contents of this file. ' +
+        'This cannot be undone. Continue?'
+      );
+      if (!confirmed) { input.value = ''; return; }
+
+      // Capture what exists right now so anything missing from the
+      // imported file can be removed from Supabase too — save() only
+      // upserts and never deletes, so without this, a coffee or blend
+      // that isn't in the backup would stay orphaned in the cloud and
+      // silently reappear the next time the app loads.
+      const oldInventoryIds = inventory.map(c => c.id);
+      const oldBlendIds = blends.map(b => b.id);
+      const oldRoastLogIds = roastLog.map(r => r.id);
+
       inventory = data.inventory || [];
       blends = data.blends || [];
       roastLog = data.roastLog || [];
       maxBatch = data.maxBatch || 8;
       document.getElementById('max-batch').value = maxBatch;
+
+      const newInventoryIds = new Set(inventory.map(c => c.id));
+      const newBlendIds = new Set(blends.map(b => b.id));
+      const newRoastLogIds = new Set(roastLog.map(r => r.id));
+
       showToast('☁️ Syncing to cloud…');
+
+      await Promise.all([
+        ...oldInventoryIds.filter(id => !newInventoryIds.has(id)).map(id => deleteFromTable('inventory', id)),
+        ...oldBlendIds.filter(id => !newBlendIds.has(id)).map(id => deleteFromTable('blends', id)),
+        ...oldRoastLogIds.filter(id => !newRoastLogIds.has(id)).map(id => deleteFromTable('roast_log', id)),
+      ]);
+
       await save();
       renderAll();
       showToast('✅ Data imported and synced to cloud');
@@ -2099,7 +2139,7 @@ function saveCoffee() {
     c.initialStock = Math.max(c.initialStock || stockLbs, stockLbs);
     c.cost = parseFloat(document.getElementById('cf-cost').value) || null;
     c.process = document.getElementById('cf-process').value;
-    c.defaultLoss = parseFloat(document.getElementById('cf-loss').value) || 18;
+    c.defaultLoss = sanitizeLossPct(document.getElementById('cf-loss').value);
     c.maxBatch = parseFloat(document.getElementById('cf-maxbatch').value) || null;
     c.threshold = parseFloat(document.getElementById('cf-threshold').value) || 10;
     c.notes = document.getElementById('cf-notes').value.trim();
@@ -2112,7 +2152,7 @@ function saveCoffee() {
       stock: stockLbs, initialStock: stockLbs,
       cost: parseFloat(document.getElementById('cf-cost').value) || null,
       process: document.getElementById('cf-process').value,
-      defaultLoss: parseFloat(document.getElementById('cf-loss').value) || 18,
+      defaultLoss: sanitizeLossPct(document.getElementById('cf-loss').value),
       maxBatch: parseFloat(document.getElementById('cf-maxbatch').value) || null,
       threshold: parseFloat(document.getElementById('cf-threshold').value) || 10,
       notes: document.getElementById('cf-notes').value.trim()
@@ -2245,9 +2285,16 @@ function addBlendComponentRow(data = null) {
   div.className = 'component-row';
   div.id = rowId;
 
-  // Build coffee options
+  // Build coffee options — archived coffees are hidden from new selections
+  // (matching the single-origin planner selector), but if this row is
+  // showing an existing component that references a since-archived
+  // coffee, keep it visible and selected so editing the blend doesn't
+  // silently drop or hide that reference.
   const coffeeOptions = inventory.length
-    ? inventory.map(c => `<option value="${c.name}" ${data && data.name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')
+    ? inventory
+        .filter(c => !c.archived || (data && data.name === c.name))
+        .map(c => `<option value="${c.name}" ${data && data.name === c.name ? 'selected' : ''}>${c.name}${c.archived ? ' (archived)' : ''}</option>`)
+        .join('')
     : `<option value="">No coffees in inventory</option>`;
 
   div.innerHTML = `
@@ -2343,7 +2390,7 @@ function saveBlend() {
   rows.forEach(row => {
     const cname = row.querySelector('[id$="-name"]').value;
     const pct = parseFloat(row.querySelector('[id$="-pct"]').value);
-    const loss = parseFloat(row.querySelector('[id$="-loss"]').value) || 18;
+    const loss = sanitizeLossPct(row.querySelector('[id$="-loss"]').value);
     const levelEl = row.querySelector('[id$="-level"]');
     const levelWrap = row.querySelector('[id$="-level-wrap"]');
     const roastLevel = (levelEl && levelWrap && levelWrap.style.display !== 'none') ? levelEl.value : null;
@@ -2888,7 +2935,7 @@ function addRoastProfile() {
   const level = document.getElementById('rp-level').value;
   const loss = parseFloat(document.getElementById('rp-loss').value);
   if (!level) { showToast('Please select a roast level'); return; }
-  if (!loss || loss <= 0) { showToast('Please enter a loss %'); return; }
+  if (!loss || loss <= 0 || loss >= 100) { showToast('Loss % must be between 0 and 100'); return; }
   const c = inventory.find(x => x.id === _roastProfilesCoffeeId);
   if (!c) return;
   if (!c.roastProfiles) c.roastProfiles = [];
@@ -3033,7 +3080,7 @@ function calcLossResult() {
   const currentEl = document.getElementById('calc-loss-current');
   const saveBtn = document.getElementById('calc-loss-save-btn');
 
-  if (!green || !roasted || roasted >= green) {
+  if (!(green > 0) || !(roasted > 0) || roasted >= green) {
     resultEl.style.display = 'none';
     saveBtn.style.display = 'none';
     return;
@@ -3051,7 +3098,7 @@ function calcLossResult() {
 function saveCalcLoss() {
   const green = parseFloat(document.getElementById('calc-green').value);
   const roasted = parseFloat(document.getElementById('calc-roasted').value);
-  if (!green || !roasted || roasted >= green) return;
+  if (!(green > 0) || !(roasted > 0) || roasted >= green) return;
   const loss = parseFloat(((green - roasted) / green * 100).toFixed(1));
   const c = inventory.find(x => x.id === _calcLossCoffeeId);
   if (!c) return;
@@ -3065,7 +3112,7 @@ function saveCalcLoss() {
 function updatePlannerLoss(itemId, val) {
   const item = plannerItems.find(x => x.id === itemId);
   if (!item) return;
-  item.loss = parseFloat(val) || 18;
+  item.loss = sanitizeLossPct(val);
   calcPlannerItem(item);
   if (item.type === 'single' && item.combinedWith) {
     const blendItem = plannerItems.find(x => x.id === item.combinedWith);
