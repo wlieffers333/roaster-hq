@@ -3378,10 +3378,23 @@ function calcPlannerItem(item) {
       }
       const pills = Array.from({length: cr.numBatches}, (_,i) =>
         `<div class="bpill">Batch ${i+1}: ${(cr.lbsPerBatch * 16).toFixed(1)} oz</div>`).join('');
+
+      // Stock warning — mirrors the single-origin card's inline check so
+      // a blend component that needs more than is in stock gets flagged
+      // right away instead of only surfacing at the Confirm Roast step.
+      const compCoffee = inventory.find(c => c.name === cr.name);
+      const compAvailableOz = compCoffee ? compCoffee.stock * 16 : null;
+      const compTotalOz = cr.compGreen * 16;
+      const compStockWarning = (compAvailableOz !== null && compTotalOz > compAvailableOz)
+        ? `<div style="background:rgba(220,80,60,0.12);border:1px solid rgba(220,80,60,0.35);border-radius:5px;padding:5px 8px;margin-top:5px;font-size:0.62rem;color:#e05a45;">
+            ⚠️ Needs ${compTotalOz.toFixed(1)} oz but only ${compAvailableOz.toFixed(1)} oz available (${(compTotalOz - compAvailableOz).toFixed(1)} oz short)
+          </div>` : '';
+
       return `<div class="breakdown-component">
         <div>
           <div class="bc-name">${cr.name}</div>
           <div class="batch-pills" style="margin-top:4px;">${pills}</div>
+          ${compStockWarning}
         </div>
         <div class="bc-pct">${cr.pct}%</div>
         <div class="bc-stat"><div class="bc-stat-val">${(cr.compGreen * 16).toFixed(1)}</div><div class="bc-stat-label">oz green</div></div>
