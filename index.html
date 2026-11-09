@@ -390,6 +390,25 @@ nav {
 }
 
 /* ── HISTORY ── */
+/* Maintenance */
+.maint-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+.maint-card.warn { border-color: rgba(200,169,110,0.7); }
+.maint-card.due { border-color: var(--red); }
+.maint-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
+.maint-name { font-weight: 600; font-size: 1rem; }
+.maint-sub { font-size: 0.68rem; color: var(--text3); margin-top: 2px; }
+.maint-bar { height: 10px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; margin: 14px 0 6px; }
+.maint-fill { height: 100%; background: var(--accent); border-radius: 6px; }
+.maint-card.warn .maint-fill { background: var(--accent2); }
+.maint-card.due .maint-fill { background: var(--red); }
+.maint-nums { display:flex; justify-content:space-between; font-size: 0.75rem; }
+.maint-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top: 12px; }
+.maint-actions input { width: 90px; }
+.maint-hist { margin-top: 12px; font-size: 0.68rem; color: var(--text3); border-top: 1px solid var(--border); padding-top: 8px; }
+.maint-hist div { display:flex; justify-content:space-between; padding: 2px 0; }
+.maint-banner { border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 0.75rem; display:none; justify-content:space-between; align-items:center; gap:10px; }
+.maint-banner.warn { background: rgba(200,169,110,0.1); border: 1px solid rgba(200,169,110,0.4); color: var(--accent2); }
+.maint-banner.due { background: rgba(200,80,60,0.12); border: 1px solid var(--red); color: var(--red); }
 .history-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1151,6 +1170,7 @@ nav {
     <button class="nav-tab" onclick="showPage('blends')"><span class="tab-icon">🔀</span><span class="tab-text">Blends</span></button>
     <button class="nav-tab" onclick="showPage('planner')"><span class="tab-icon">🔥</span><span class="tab-text">Roast Planner</span></button>
     <button class="nav-tab" onclick="showPage('history')"><span class="tab-icon">🕘</span><span class="tab-text">History</span></button>
+    <button class="nav-tab" onclick="showPage('maintenance')"><span class="tab-icon">🧽</span><span class="tab-text">Maintenance</span></button>
     <div style="display:flex;gap:6px;margin-left:auto;padding:6px 8px;align-items:center;">
       <button class="btn btn-secondary btn-sm" onclick="exportData()" style="font-size:0.65rem;">⬇ Export</button>
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-file').click()" style="font-size:0.65rem;">⬆ Import</button>
@@ -1286,6 +1306,7 @@ nav {
       <button class="btn btn-primary" onclick="openAddPlannerItem('blend')">+ Blend</button>
     </div>
   </div>
+  <div id="maint-banner" class="maint-banner" onclick="goToMaintenance()" style="cursor:pointer;"></div>
   <div id="planner-entries"></div>
   <div id="queue-banner" style="display:none;background:rgba(200,169,110,0.1);border:1px solid rgba(200,169,110,0.3);border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;">
     <div style="font-size:0.75rem;color:var(--accent2);">📋 You have a saved queue</div>
@@ -1305,6 +1326,16 @@ nav {
 <!-- ══════════════════════════════════════
      HISTORY PAGE
 ══════════════════════════════════════ -->
+<div class="page" id="page-maintenance">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Maintenance</div>
+      <div class="page-subtitle">Counts green pounds roasted since each task was last done</div>
+    </div>
+  </div>
+  <div id="maintenance-list"></div>
+</div>
+
 <div class="page" id="page-history">
   <div class="page-header">
     <div>
@@ -1693,6 +1724,23 @@ let editingBlendId = null;
 let restockId = null;
 let plannerType = 'single';
 let maxBatch = 8;
+// Maintenance: counts green lbs roasted since each task was last done.
+// Persisted as JSON in the settings table (key 'maintenance').
+let maintenance = defaultMaintenance();
+let maintenanceLoaded = false; // never overwrite cloud data with defaults before a successful load
+function defaultMaintenance() {
+  return { tasks: [ductTask(), { id: 'deep-clean', name: 'Deep Clean', intervalLbs: 5000, note: 'Valenta 8 manual: full roast chamber teardown about every 5,000 lbs roasted, or sooner if roast times or airflow start to drift.', lbs: 0, lastDone: null, history: [] }].reverse() };
+}
+// Time-based task: counts days instead of pounds. The clock starts the day
+// the task is first created (startDate) until it is marked done.
+function ductTask() {
+  return { id: 'duct-clean', type: 'time', name: 'Exhaust Duct Cleaning', intervalDays: 365,
+    note: 'Valenta 8 manual: clean the exhaust ductwork at least once a year, more often with heavy use. Unplug the blower first.',
+    startDate: new Date().toISOString().split('T')[0], lastDone: null, history: [] };
+}
+function ensureMaintenanceTasks() {
+  if (!maintenance.tasks.some(t => t.id === 'duct-clean')) maintenance.tasks.push(ductTask());
+}
 let blendComponentCount = 0;
 
 const BAG_SIZES = [
@@ -1779,6 +1827,13 @@ async function save() {
       headers: { 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify([{ key: 'maxBatch', value: maxBatch }])
     });
+    if (maintenanceLoaded) {
+      await sbFetch('settings', {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify([{ key: 'maintenance', value: JSON.stringify(maintenance) }])
+      });
+    }
   } catch(e) {
     console.error('Save error', e);
     showToast('⚠️ Cloud save failed — check connection');
@@ -1798,6 +1853,15 @@ async function load() {
     blends = (blendRows || []).map(r => r.data);
     roastLog = (logRows || []).map(r => r.data);
     const mbSetting = (settingsRows || []).find(s => s.key === 'maxBatch');
+    const mSetting = (settingsRows || []).find(s => s.key === 'maintenance');
+    if (mSetting) {
+      try {
+        const m = typeof mSetting.value === 'string' ? JSON.parse(mSetting.value) : mSetting.value;
+        if (m && Array.isArray(m.tasks)) maintenance = m;
+        ensureMaintenanceTasks();
+      } catch(e) { console.error('Bad maintenance setting', e); }
+    }
+    maintenanceLoaded = true;
     if (mbSetting) {
       maxBatch = parseFloat(mbSetting.value) || 8;
       document.getElementById('max-batch').value = maxBatch;
@@ -1845,6 +1909,7 @@ function showPage(name) {
   if (name === 'planner') { renderPlanner(); updateQueueUI(); }
   if (name === 'dashboard') renderDashboard();
   if (name === 'history') renderHistory();
+  if (name === 'maintenance') renderMaintenance();
 }
 
 let cfUnit = 'lbs';
@@ -1986,6 +2051,7 @@ function renderAll() {
   renderPlanner();
   renderDashboard();
   renderHistory();
+  renderMaintenance();
   updatePlannerDate();
 }
 
@@ -3423,6 +3489,26 @@ function hasRoastOutput(item) {
   return (item._greenLbs > 0) || (item._roastedLbs > 0);
 }
 
+// Total number of roaster batches for the day. Blend components already
+// covered by a combined single-origin entry or a shared roast are counted
+// under that entry, so they are skipped here (same rule executeRoast uses).
+function countTotalBatches(active) {
+  return active.reduce((sum, item) => {
+    if (item.type === 'single' || item.type === 'shared') {
+      return sum + Math.ceil(item._greenLbs / (item.maxBatch || maxBatch));
+    }
+    if (!item._compResults) return sum;
+    const skip = [];
+    (item.combinedSingles || []).forEach(singleId => {
+      const single = plannerItems.find(x => x.id === singleId);
+      const sCoffee = single ? inventory.find(c => c.id === single.coffeeId) : null;
+      if (sCoffee) skip.push(sCoffee.name);
+    });
+    if (item.sharedRoasts) skip.push(...Object.keys(item.sharedRoasts));
+    return sum + item._compResults.filter(cr => !skip.includes(cr.name)).reduce((b, cr) => b + cr.numBatches, 0);
+  }, 0);
+}
+
 function renderSummary() {
   const summaryEl = document.getElementById('planner-summary');
   const active = plannerItems.filter(hasRoastOutput);
@@ -3431,6 +3517,7 @@ function renderSummary() {
   summaryEl.style.display = '';
 
   const totalGreen = active.reduce((s,x) => s + x._greenLbs, 0);
+  const totalBatchCount = countTotalBatches(active);
 
   // Build deduction map: coffeeId -> lbs
   const deductions = {};
@@ -3586,6 +3673,10 @@ function renderSummary() {
         <div class="total-label">Total Green to Roast</div>
         <div><span class="total-val">${(totalGreen * 16).toFixed(1)}</span><span style="font-size:0.65rem;color:var(--text3);margin-left:4px;">OZ</span></div>
       </div>
+      <div class="summary-total" style="border-top:none;padding-top:0;">
+        <div class="total-label">Total Batches</div>
+        <div><span class="total-val">${totalBatchCount}</span><span style="font-size:0.65rem;color:var(--text3);margin-left:4px;">BATCH${totalBatchCount === 1 ? '' : 'ES'}</span></div>
+      </div>
       <div class="summary-actions">
         <button class="btn btn-secondary" onclick="clearPlanner()">Clear Session</button>
         <button class="btn btn-secondary" onclick="saveToQueue()">💾 Save to Queue</button>
@@ -3610,6 +3701,10 @@ function renderSummary() {
         <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3);">Total Green</span>
           <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--accent2);letter-spacing:0.04em;">${(totalGreen * 16).toFixed(1)} <span style="font-size:0.7rem;color:var(--text3);">OZ</span></span>
+        </div>
+        <div style="padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3);">Total Batches</span>
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--accent2);letter-spacing:0.04em;">${totalBatchCount}</span>
         </div>
         ${buildBagsAndLabelsHTML(active, false)}
       </div>
@@ -3807,6 +3902,8 @@ function executeRoast() {
     // of reconstructing an approximation from the coarse totals above.
     items: JSON.parse(JSON.stringify(active))
   });
+
+  addMaintenanceLbs(totalGreen);
 
   save();
   closeModal('modal-confirm-roast');
@@ -4428,6 +4525,123 @@ function renderDashBreakdown(periodLogs, periodLabel, limit = null) {
 // ─────────────────────────────────────────
 // HISTORY
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// MAINTENANCE
+// ─────────────────────────────────────────
+function mEsc(v) { return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function addMaintenanceLbs(lbs) {
+  const n = parseFloat(lbs);
+  if (!isFinite(n) || n <= 0) return;
+  maintenance.tasks.forEach(t => {
+    if (t.type === 'time') return;
+    t.lbs = parseFloat(((t.lbs || 0) + n).toFixed(2));
+  });
+}
+
+function maintDaysSince(t) {
+  const start = t.lastDone || t.startDate;
+  if (!start) return 0;
+  const ms = new Date(new Date().toISOString().split('T')[0]) - new Date(start);
+  return Math.max(0, Math.round(ms / 86400000));
+}
+function maintUsed(t) { return t.type === 'time' ? maintDaysSince(t) : (t.lbs || 0); }
+function maintLimit(t) { return (t.type === 'time' ? t.intervalDays : t.intervalLbs) || 1; }
+function maintUnit(t) { return t.type === 'time' ? 'days' : 'lbs'; }
+
+function maintStatus(t) {
+  const pct = maintUsed(t) / maintLimit(t) * 100;
+  return { pct, state: pct >= 100 ? 'due' : pct >= 80 ? 'warn' : 'ok' };
+}
+
+function maintFmt(t, v) { return t.type === 'time' ? String(Math.round(v)) : v.toFixed(1); }
+
+function renderMaintenance() {
+  renderMaintBanner();
+  const el = document.getElementById('maintenance-list');
+  if (!el) return;
+  el.innerHTML = maintenance.tasks.map(t => {
+    const st = maintStatus(t);
+    const used = maintUsed(t), limit = maintLimit(t), unit = maintUnit(t);
+    const msg = st.state === 'due'
+      ? `Due now — ${maintFmt(t, used - limit)} ${unit} over`
+      : `${maintFmt(t, limit - used)} ${unit} until due`;
+    const hist = (t.history || []).slice(-5).reverse().map(h =>
+      `<div><span>${mEsc(fmtDate(h.date))}</span><span>${t.type === 'time'
+        ? (h.days || 0) + ' days since previous'
+        : (h.lbs || 0).toFixed(1) + ' lbs roasted since previous'}</span></div>`).join('');
+    const sub = t.lastDone ? 'Last done ' + fmtDate(t.lastDone)
+      : (t.type === 'time' ? 'Tracking since ' + fmtDate(t.startDate) : 'No completion recorded yet');
+    return `<div class="maint-card ${st.state === 'ok' ? '' : st.state}">
+      <div class="maint-top">
+        <div>
+          <div class="maint-name">${mEsc(t.name)}</div>
+          <div class="maint-sub">${mEsc(sub)} · every ${limit} ${t.type === 'time' ? 'days' : 'green lbs'}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="markMaintDone('${t.id}')">✓ Mark Done</button>
+      </div>
+      ${t.note ? `<div class="maint-sub" style="margin-top:8px;">${mEsc(t.note)}</div>` : ''}
+      <div class="maint-bar"><div class="maint-fill" style="width:${Math.min(100, st.pct).toFixed(1)}%"></div></div>
+      <div class="maint-nums"><span>${maintFmt(t, used)} / ${limit} ${unit}</span><span>${msg}</span></div>
+      <div class="maint-actions">
+        <span class="field-label">Interval (${unit})</span>
+        <input class="field-input" type="number" min="1" step="1" id="maint-int-${t.id}" value="${limit}">
+        <button class="btn btn-secondary btn-sm" onclick="setMaintInterval('${t.id}')">Save</button>
+      </div>
+      ${hist ? `<div class="maint-hist"><div class="field-label" style="margin-bottom:4px;">Recent completions</div>${hist}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderMaintBanner() {
+  const b = document.getElementById('maint-banner');
+  if (!b) return;
+  const due = maintenance.tasks.map(t => ({ t, st: maintStatus(t) })).filter(x => x.st.state !== 'ok')
+    .sort((a, c) => c.st.pct - a.st.pct);
+  if (!due.length) { b.style.display = 'none'; return; }
+  const worst = due[0];
+  const t = worst.t;
+  const extra = due.length > 1 ? ` (+${due.length - 1} more)` : '';
+  b.className = 'maint-banner ' + worst.st.state;
+  b.style.display = 'flex';
+  b.innerHTML = `<span>🧽 ${mEsc(t.name)} ${worst.st.state === 'due' ? 'is due' : 'coming up'} (${maintFmt(t, maintUsed(t))} / ${maintLimit(t)} ${maintUnit(t)})${extra}</span><span>View →</span>`;
+}
+
+function goToMaintenance() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'maintenance'"));
+  });
+  document.getElementById('page-maintenance').classList.add('active');
+  renderMaintenance();
+}
+
+function markMaintDone(id) {
+  const t = maintenance.tasks.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`Mark ${t.name} as done${t.type === 'time' ? ' and restart the clock?' : ' and reset the counter to 0?'}`)) return;
+  const today = new Date().toISOString().split('T')[0];
+  t.history = t.history || [];
+  if (t.type === 'time') t.history.push({ date: today, days: maintDaysSince(t) });
+  else { t.history.push({ date: today, lbs: t.lbs || 0 }); t.lbs = 0; }
+  t.lastDone = today;
+  save();
+  renderMaintenance();
+  showToast(`${t.name} recorded`);
+}
+
+function setMaintInterval(id) {
+  const t = maintenance.tasks.find(x => x.id === id);
+  const inp = document.getElementById('maint-int-' + id);
+  if (!t || !inp) return;
+  const v = parseFloat(inp.value);
+  if (!isFinite(v) || v <= 0) { showToast('Enter a positive number'); return; }
+  if (t.type === 'time') t.intervalDays = v; else t.intervalLbs = v;
+  save();
+  renderMaintenance();
+  showToast('Interval updated');
+}
+
 function renderHistory() {
   const listEl = document.getElementById('history-list');
   if (!listEl) return;
