@@ -428,7 +428,7 @@ nav {
 .pr-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
 .pr-table tr:last-child td { border-bottom: none; }
 .pr-table td.pr-row-name { text-align: left; white-space: normal; color: var(--text); }
-.pr-table td.pr-main { color: var(--accent2); font-weight: 600; }
+.pr-table .pr-basecell { color: var(--accent2); font-weight: 600; }
 .pr-table td.pr-m { color: var(--text2); }
 .pr-table td.pr-m.low { color: var(--red); }
 .pr-table td.pr-open { padding: 8px 0; text-align: left; white-space: normal; }
@@ -4868,7 +4868,7 @@ function defaultPricing() {
     disc5lb: 15,
     label: 0.10,
     bags: { '4oz': 0.36, '8oz': 0.72, '12oz': 0.72, '2lb': 0.58, '5lb': 1.03 }, // 8oz ships in the 12oz bag
-    products: {}           // 'c:<id>' / 'b:<id>' -> { price12, limited, hidden }
+    products: {}           // 'c:<id>' / 'b:<id>' -> { base, price, confirmed, confirmedSuggested, limited, hidden }
   };
 }
 
@@ -4972,21 +4972,28 @@ function renderPricingSettings() {
     <div class="maint-sub" style="margin-top:10px;">Retail margin = price minus coffee and packaging. Markets take ${mkt.toFixed(1)}% in fees, Shopify ${pricing.shopifyFee}% (shipping not included). Prices round to the nearest dollar.</div>`;
 }
 
-function pCalc(product, override12) {
+// Base size = the bag a coffee is mainly sold in (12oz by default, or 8oz).
+function pBase(settings) { return settings.base === '8oz' ? '8oz' : '12oz'; }
+function pBaseOz(base) { return base === '8oz' ? 8 : 12; }
+function pSavedPrice(settings) { return pNum(settings.price !== undefined ? settings.price : settings.price12); }
+
+function pCalc(product, override) {
   const rc = pRoastedCost(product);
   if (rc.missing) return { missing: rc.missing };
   const m = pricing.retailMargin / 100;
   const cogs = {};
   BAG_SIZES.forEach(b => { cogs[b.label] = rc.perLb * b.oz / 16 + pPkg(b.label); });
-  const suggested12 = Math.round(cogs['12oz'] / (1 - m));
   const settings = pricing.products[product.key] || {};
-  const yours = override12 !== undefined ? pNum(override12) : pNum(settings.price12);
-  const base12 = yours > 0 ? yours : suggested12;
-  const perOz = base12 / 12;
+  const base = pBase(settings), baseOz = pBaseOz(base);
+  const suggested = Math.round(cogs[base] / (1 - m));
+  const yours = override !== undefined ? pNum(override) : pSavedPrice(settings);
+  const baseP = yours > 0 ? yours : suggested;
+  const perOz = baseP / baseOz;
+  const atLeast = (size, oz) => Math.round(Math.max(cogs[size] / (1 - m), perOz * oz));
   const prices = {
-    '4oz':  Math.round(Math.max(cogs['4oz'] / (1 - m), perOz * 4)),
-    '8oz':  Math.round(Math.max(cogs['8oz'] / (1 - m), perOz * 8)),
-    '12oz': base12,
+    '4oz':  atLeast('4oz', 4),
+    '8oz':  base === '8oz' ? baseP : atLeast('8oz', 8),
+    '12oz': base === '12oz' ? baseP : null,
     '2lb':  settings.limited ? null : Math.round(perOz * 32 * (1 - pricing.disc2lb / 100)),
     '5lb':  settings.limited ? null : Math.round(perOz * 80 * (1 - pricing.disc5lb / 100))
   };
@@ -4994,7 +5001,7 @@ function pCalc(product, override12) {
   Object.keys(prices).forEach(k => { if (prices[k]) margin[k] = 1 - cogs[k] / prices[k]; });
   const wm = pricing.wholesaleMargin / 100;
   const wholesale = Math.ceil(((rc.perLb + pPkg('5lb') / 5) / (1 - wm)) * 4) / 4; // nearest $0.25 up
-  return { rc, cogs, suggested12, yours: yours > 0 ? yours : null, prices, margin, wholesale, settings };
+  return { rc, cogs, base, suggested, yours: yours > 0 ? yours : null, prices, margin, wholesale, settings };
 }
 
 function pProducts() {
@@ -5044,16 +5051,30 @@ function pricingConfirm(key) {
   const r = pCalc(product);
   if (r.missing) { showToast('Add a green cost first'); return; }
   const draft = pDrafts()[key];
-  const typed = pNum(draft !== undefined ? draft : (pricing.products[key] || {}).price12);
-  const price = typed > 0 ? Math.round(typed) : r.suggested12;
   const s = pricing.products[key] || (pricing.products[key] = {});
-  s.price12 = price;
+  const typed = pNum(draft !== undefined ? draft : pSavedPrice(s));
+  const price = typed > 0 ? Math.round(typed) : r.suggested;
+  s.price = price;
+  delete s.price12;
   s.confirmed = true;
-  s.confirmedSuggested = r.suggested12;
+  s.confirmedSuggested = r.suggested;
   delete pDrafts()[key];
   if (window._pricingOpen === key) window._pricingOpen = null;
   savePricing(); renderPricing();
-  showToast(`${product.name}: $${price} 12oz confirmed`);
+  showToast(`${product.name}: $${price} ${r.base} confirmed`);
+}
+
+// Switching the base size changes what the saved price means, so it needs re-confirming.
+function pricingSetBase(key, base) {
+  const s = pricing.products[key] || (pricing.products[key] = {});
+  if (pBase(s) === base) return;
+  s.base = base;
+  delete s.price; delete s.price12;
+  s.confirmed = false;
+  delete s.confirmedSuggested;
+  delete pDrafts()[key];
+  if (window._pricingOpen === key) window._pricingOpen = null;
+  savePricing(); renderPricing();
 }
 
 function pricingOpen(key) {
@@ -5070,9 +5091,12 @@ function togglePricingHidden() {
 function pSizesHTML(r) {
   return BAG_SIZES.map(b => {
     const price = r.prices[b.label];
-    if (!price) return `<div class="pr-size off"><div class="pr-size-label">${b.label}</div><div class="pr-size-price">—</div><div class="pr-size-m">core only</div></div>`;
+    if (!price) {
+      const why = b.label === '12oz' ? 'not sold' : 'core only';
+      return `<div class="pr-size off"><div class="pr-size-label">${b.label}</div><div class="pr-size-price">—</div><div class="pr-size-m">${why}</div></div>`;
+    }
     const m = r.margin[b.label];
-    return `<div class="pr-size${b.label === '12oz' ? ' main' : ''}">
+    return `<div class="pr-size${b.label === r.base ? ' main' : ''}">
       <div class="pr-size-label">${b.label}</div>
       <div class="pr-size-price">$${price}</div>
       <div class="pr-size-m${m < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(m)} margin</div>
@@ -5080,11 +5104,10 @@ function pSizesHTML(r) {
   }).join('');
 }
 
-// Why a coffee needs attention, or null if it belongs in the price list.
 function pReviewReason(r, s) {
   if (r.missing) return { kind: 'missing', text: `Missing green cost for: ${r.missing.map(mEsc).join(', ')}. Add a cost per lb in Inventory.` };
   if (!s.confirmed) return { kind: 'new', text: 'New — set a price and confirm it.' };
-  if (r.suggested12 > (s.confirmedSuggested || 0)) return { kind: 'cost', text: `Green cost went up — suggested 12oz is now $${r.suggested12} (was $${s.confirmedSuggested}). You charge $${s.price12}.` };
+  if (r.suggested > (s.confirmedSuggested || 0)) return { kind: 'cost', text: `Green cost went up — suggested ${r.base} is now $${r.suggested} (was $${s.confirmedSuggested}). You charge $${pSavedPrice(s)}.` };
   return null;
 }
 
@@ -5092,7 +5115,7 @@ function pCardHTML(p, r, s, reason, editing) {
   const tag = p.type === 'blend' ? 'Blend' : 'Single origin';
   const id = pDomId(p.key);
   const draft = pDrafts()[p.key];
-  const val = draft !== undefined ? draft : (s.price12 || '');
+  const val = draft !== undefined ? draft : (pSavedPrice(s) || '');
   const hideBtn = `<button class="btn btn-secondary btn-sm" onclick="pricingSetFlag('${p.key}', 'hidden', ${!s.hidden})">${s.hidden ? '↩ Unhide' : 'Hide'}</button>`;
   if (r.missing) {
     return `<div class="maint-card due">
@@ -5104,48 +5127,56 @@ function pCardHTML(p, r, s, reason, editing) {
   const shown = pCalc(p, val || '');
   const mktFee = (pricing.boothFee + pricing.terminalFee) / 100;
   const onlineFee = pricing.shopifyFee / 100;
-  const m12 = shown.margin['12oz'];
+  const mb = shown.margin[r.base];
   const lossNote = p.type === 'blend' ? `blend avg loss ${r.rc.loss.toFixed(1)}%` : `loss ${r.rc.loss}%`;
   const msg = reason ? `<div class="maint-sub" style="margin-top:8px;color:var(--accent2);">${reason.text}</div>` : '';
+  const baseOpt = b => `<option value="${b}" ${r.base === b ? 'selected' : ''}>${b}</option>`;
   return `<div class="maint-card${reason && reason.kind === 'cost' ? ' warn' : ''}" id="${id}">
     <div class="maint-top">
       <div>
         <div class="maint-name">${mEsc(p.name)}</div>
         <div class="maint-sub">${tag} · green ${pMoney(r.rc.green)}/lb · ${lossNote} · roasted ${pMoney(r.rc.perLb)}/lb</div>
       </div>
-      <div class="pr-sugg">Suggested 12oz <b>$${r.suggested12}</b></div>
+      <div class="pr-sugg">Suggested ${r.base} <b>$${r.suggested}</b></div>
     </div>
     ${msg}
     <div class="pr-sizes" id="${id}-sizes">${pSizesHTML(shown)}</div>
     <div class="maint-nums" style="margin-top:8px;flex-wrap:wrap;gap:6px;">
-      <span>12oz: keep ${pPct(m12 - mktFee)} at markets · ${pPct(m12 - onlineFee)} online</span>
+      <span>${r.base}: keep ${pPct(mb - mktFee)} at markets · ${pPct(mb - onlineFee)} online</span>
       <span>Wholesale floor ${pMoney(r.wholesale)}/lb</span>
     </div>
     <div class="pr-controls">
+      <div class="field-group" style="width:90px;">
+        <span class="field-label">Sells as</span>
+        <select class="field-input" onchange="pricingSetBase('${p.key}', this.value)">${baseOpt('12oz')}${baseOpt('8oz')}</select>
+      </div>
       <div class="field-group">
-        <span class="field-label">Your 12oz price</span>
-        <input class="field-input" type="number" min="0" step="1" placeholder="$${r.suggested12}" value="${val}" oninput="pricingPreview('${p.key}', this.value)">
+        <span class="field-label">Your ${r.base} price</span>
+        <input class="field-input" type="number" min="0" step="1" placeholder="$${r.suggested}" value="${val}" oninput="pricingPreview('${p.key}', this.value)">
       </div>
       <label class="pr-check"><input type="checkbox" ${s.limited ? 'checked' : ''} onchange="pricingSetFlag('${p.key}', 'limited', this.checked)"> Limited (no 2lb/5lb)</label>
       <button class="btn btn-primary btn-sm" onclick="pricingConfirm('${p.key}')">✓ Confirm price</button>
       ${editing ? `<button class="btn btn-secondary btn-sm" onclick="pricingOpen('${p.key}')">Cancel</button>` : ''}
       ${hideBtn}
     </div>
-    <div class="maint-sub" style="margin-top:6px;">Leave the price blank to confirm the suggested $${r.suggested12}.</div>
+    <div class="maint-sub" style="margin-top:6px;">Leave the price blank to confirm the suggested $${r.suggested}.</div>
   </div>`;
 }
 
 function pRowHTML(p, r, s) {
-  const cell = size => r.prices[size] ? `$${r.prices[size]}` : '—';
-  const m12 = r.margin['12oz'];
+  const cell = size => {
+    const v = r.prices[size] ? `$${r.prices[size]}` : '—';
+    return size === r.base ? `<span class="pr-basecell">${v}</span>` : v;
+  };
+  const mb = r.margin[r.base];
   return `<tr>
-    <td class="pr-row-name">${mEsc(p.name)}${p.type === 'blend' ? ' <span class="pr-tag">Blend</span>' : ''}${s.limited ? ' <span class="pr-tag">Limited</span>' : ''}</td>
+    <td class="pr-row-name">${mEsc(p.name)}${p.type === 'blend' ? ' <span class="pr-tag">Blend</span>' : ''}${r.base === '8oz' ? ' <span class="pr-tag">8oz</span>' : ''}${s.limited ? ' <span class="pr-tag">Limited</span>' : ''}</td>
     <td class="pr-sm">${cell('4oz')}</td>
-    <td class="pr-sm">${cell('8oz')}</td>
-    <td class="pr-main">${cell('12oz')}</td>
+    <td>${cell('8oz')}</td>
+    <td>${cell('12oz')}</td>
     <td>${cell('2lb')}</td>
     <td>${cell('5lb')}</td>
-    <td class="pr-m${m12 < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(m12)}</td>
+    <td class="pr-m${mb < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(mb)}</td>
     <td><button class="btn btn-secondary btn-sm" onclick="pricingOpen('${p.key}')" aria-label="Edit ${mEsc(p.name)}">✎</button></td>
   </tr>`;
 }
@@ -5203,7 +5234,7 @@ function renderPricing() {
       else rows += pRowHTML(x.p, x.r, x.s);
     });
     html += `<div class="maint-card pr-table-wrap"><table class="pr-table">
-      <thead><tr><th>Coffee</th><th class="pr-sm">4oz</th><th class="pr-sm">8oz</th><th>12oz</th><th>2lb</th><th>5lb</th><th>Margin</th><th></th></tr></thead>
+      <thead><tr><th>Coffee</th><th class="pr-sm">4oz</th><th>8oz</th><th>12oz</th><th>2lb</th><th>5lb</th><th>Margin</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   }
   el.innerHTML = html;
