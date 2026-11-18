@@ -420,7 +420,21 @@ nav {
 .pr-controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .pr-controls .field-group { width: 140px; }
 .pr-check { font-size: 0.72rem; color: var(--text2); display: flex; gap: 6px; align-items: center; padding-bottom: 7px; cursor: pointer; }
-@media (max-width: 580px) { .pr-sizes { grid-template-columns: repeat(3, 1fr); } }
+.pr-section { font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; }
+.pr-table-wrap { padding: 6px 10px; overflow-x: auto; }
+.pr-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.pr-table th { font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); font-weight: normal; text-align: right; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+.pr-table th:first-child { text-align: left; }
+.pr-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.pr-table tr:last-child td { border-bottom: none; }
+.pr-table td.pr-row-name { text-align: left; white-space: normal; color: var(--text); }
+.pr-table td.pr-main { color: var(--accent2); font-weight: 600; }
+.pr-table td.pr-m { color: var(--text2); }
+.pr-table td.pr-m.low { color: var(--red); }
+.pr-table td.pr-open { padding: 8px 0; text-align: left; white-space: normal; }
+.pr-table td.pr-open .maint-card { margin-bottom: 0; }
+.pr-tag { font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); background: var(--tag-blend); border-radius: 3px; padding: 1px 5px; margin-left: 4px; }
+@media (max-width: 580px) { .pr-sizes { grid-template-columns: repeat(3, 1fr); } .pr-table .pr-sm { display: none; } .pr-table { font-size: 0.75rem; } }
 .maint-hist { margin-top: 12px; font-size: 0.68rem; color: var(--text3); border-top: 1px solid var(--border); padding-top: 8px; }
 .maint-hist div { display:flex; justify-content:space-between; padding: 2px 0; }
 .maint-banner { border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 0.75rem; display:none; justify-content:space-between; align-items:center; gap:10px; }
@@ -4917,69 +4931,6 @@ function pPkg(size) {
   return (pricing.bags[size] || 0) + (pricing.label || 0);
 }
 
-function pCalc(product) {
-  const rc = pRoastedCost(product);
-  if (rc.missing) return { missing: rc.missing };
-  const m = pricing.retailMargin / 100;
-  const cogs = {};
-  BAG_SIZES.forEach(b => { cogs[b.label] = rc.perLb * b.oz / 16 + pPkg(b.label); });
-  const suggested12 = Math.round(cogs['12oz'] / (1 - m));
-  const settings = pricing.products[product.key] || {};
-  const yours = pNum(settings.price12);
-  const base12 = yours > 0 ? yours : suggested12;
-  const perOz = base12 / 12;
-  const prices = {
-    '4oz':  Math.round(Math.max(cogs['4oz'] / (1 - m), perOz * 4)),
-    '8oz':  Math.round(Math.max(cogs['8oz'] / (1 - m), perOz * 8)),
-    '12oz': base12,
-    '2lb':  settings.limited ? null : Math.round(perOz * 32 * (1 - pricing.disc2lb / 100)),
-    '5lb':  settings.limited ? null : Math.round(perOz * 80 * (1 - pricing.disc5lb / 100))
-  };
-  const margin = {};
-  Object.keys(prices).forEach(k => { if (prices[k]) margin[k] = 1 - cogs[k] / prices[k]; });
-  const wm = pricing.wholesaleMargin / 100;
-  const wholesale = Math.ceil(((rc.perLb + pPkg('5lb') / 5) / (1 - wm)) * 4) / 4; // nearest $0.25 up
-  return { rc, cogs, suggested12, yours, prices, margin, wholesale, settings };
-}
-
-function pProducts() {
-  const list = [];
-  inventory.filter(c => !c.archived).forEach(c => list.push({ key: 'c:' + c.id, type: 'single', name: c.name, ref: c }));
-  blends.forEach(b => list.push({ key: 'b:' + b.id, type: 'blend', name: b.name, ref: b }));
-  return list;
-}
-
-function pricingSet(field, value) {
-  const v = pNum(value);
-  if (v === null || v < 0) { renderPricing(); return; }
-  if (['retailMargin','wholesaleMargin','disc2lb','disc5lb','fallbackLoss'].includes(field) && v >= 100) { showToast('Must be under 100%'); renderPricing(); return; }
-  pricing[field] = v;
-  savePricing(); renderPricing();
-}
-
-function pricingSetBag(size, value) {
-  const v = pNum(value);
-  if (v === null || v < 0) { renderPricing(); return; }
-  pricing.bags[size] = v;
-  savePricing(); renderPricing();
-}
-
-function pricingSetProduct(key, field, value) {
-  const s = pricing.products[key] || (pricing.products[key] = {});
-  if (field === 'price12') {
-    const v = pNum(value);
-    if (v === null || v <= 0) delete s.price12; else s.price12 = v;
-  } else {
-    s[field] = !!value;
-  }
-  savePricing(); renderPricing();
-}
-
-function togglePricingHidden() {
-  window._pricingShowHidden = !window._pricingShowHidden;
-  renderPricing();
-}
-
 function renderPricingSettings() {
   const el = document.getElementById('pricing-settings');
   if (!el) return;
@@ -5021,79 +4972,242 @@ function renderPricingSettings() {
     <div class="maint-sub" style="margin-top:10px;">Retail margin = price minus coffee and packaging. Markets take ${mkt.toFixed(1)}% in fees, Shopify ${pricing.shopifyFee}% (shipping not included). Prices round to the nearest dollar.</div>`;
 }
 
+function pCalc(product, override12) {
+  const rc = pRoastedCost(product);
+  if (rc.missing) return { missing: rc.missing };
+  const m = pricing.retailMargin / 100;
+  const cogs = {};
+  BAG_SIZES.forEach(b => { cogs[b.label] = rc.perLb * b.oz / 16 + pPkg(b.label); });
+  const suggested12 = Math.round(cogs['12oz'] / (1 - m));
+  const settings = pricing.products[product.key] || {};
+  const yours = override12 !== undefined ? pNum(override12) : pNum(settings.price12);
+  const base12 = yours > 0 ? yours : suggested12;
+  const perOz = base12 / 12;
+  const prices = {
+    '4oz':  Math.round(Math.max(cogs['4oz'] / (1 - m), perOz * 4)),
+    '8oz':  Math.round(Math.max(cogs['8oz'] / (1 - m), perOz * 8)),
+    '12oz': base12,
+    '2lb':  settings.limited ? null : Math.round(perOz * 32 * (1 - pricing.disc2lb / 100)),
+    '5lb':  settings.limited ? null : Math.round(perOz * 80 * (1 - pricing.disc5lb / 100))
+  };
+  const margin = {};
+  Object.keys(prices).forEach(k => { if (prices[k]) margin[k] = 1 - cogs[k] / prices[k]; });
+  const wm = pricing.wholesaleMargin / 100;
+  const wholesale = Math.ceil(((rc.perLb + pPkg('5lb') / 5) / (1 - wm)) * 4) / 4; // nearest $0.25 up
+  return { rc, cogs, suggested12, yours: yours > 0 ? yours : null, prices, margin, wholesale, settings };
+}
+
+function pProducts() {
+  const list = [];
+  inventory.filter(c => !c.archived).forEach(c => list.push({ key: 'c:' + c.id, type: 'single', name: c.name, ref: c }));
+  blends.forEach(b => list.push({ key: 'b:' + b.id, type: 'blend', name: b.name, ref: b }));
+  return list;
+}
+
+function pDomId(key) { return 'pr-' + key.replace(/[^a-zA-Z0-9]/g, '-'); }
+function pDrafts() { return window._pricingDraft || (window._pricingDraft = {}); }
+
+function pricingSet(field, value) {
+  const v = pNum(value);
+  if (v === null || v < 0) { renderPricing(); return; }
+  if (['retailMargin','wholesaleMargin','disc2lb','disc5lb','fallbackLoss'].includes(field) && v >= 100) { showToast('Must be under 100%'); renderPricing(); return; }
+  pricing[field] = v;
+  savePricing(); renderPricing();
+}
+
+function pricingSetBag(size, value) {
+  const v = pNum(value);
+  if (v === null || v < 0) { renderPricing(); return; }
+  pricing.bags[size] = v;
+  savePricing(); renderPricing();
+}
+
+function pricingSetFlag(key, field, value) {
+  const s = pricing.products[key] || (pricing.products[key] = {});
+  s[field] = !!value;
+  savePricing(); renderPricing();
+}
+
+// Live-update one card's size grid while typing a price, without a full re-render.
+function pricingPreview(key, value) {
+  pDrafts()[key] = value;
+  const product = pProducts().find(p => p.key === key);
+  const box = document.getElementById(pDomId(key) + '-sizes');
+  if (!product || !box) return;
+  const v = pNum(value);
+  box.innerHTML = pSizesHTML(pCalc(product, v > 0 ? v : ''));
+}
+
+function pricingConfirm(key) {
+  const product = pProducts().find(p => p.key === key);
+  if (!product) return;
+  const r = pCalc(product);
+  if (r.missing) { showToast('Add a green cost first'); return; }
+  const draft = pDrafts()[key];
+  const typed = pNum(draft !== undefined ? draft : (pricing.products[key] || {}).price12);
+  const price = typed > 0 ? Math.round(typed) : r.suggested12;
+  const s = pricing.products[key] || (pricing.products[key] = {});
+  s.price12 = price;
+  s.confirmed = true;
+  s.confirmedSuggested = r.suggested12;
+  delete pDrafts()[key];
+  if (window._pricingOpen === key) window._pricingOpen = null;
+  savePricing(); renderPricing();
+  showToast(`${product.name}: $${price} 12oz confirmed`);
+}
+
+function pricingOpen(key) {
+  window._pricingOpen = window._pricingOpen === key ? null : key;
+  delete pDrafts()[key];
+  renderPricing();
+}
+
+function togglePricingHidden() {
+  window._pricingShowHidden = !window._pricingShowHidden;
+  renderPricing();
+}
+
+function pSizesHTML(r) {
+  return BAG_SIZES.map(b => {
+    const price = r.prices[b.label];
+    if (!price) return `<div class="pr-size off"><div class="pr-size-label">${b.label}</div><div class="pr-size-price">—</div><div class="pr-size-m">core only</div></div>`;
+    const m = r.margin[b.label];
+    return `<div class="pr-size${b.label === '12oz' ? ' main' : ''}">
+      <div class="pr-size-label">${b.label}</div>
+      <div class="pr-size-price">$${price}</div>
+      <div class="pr-size-m${m < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(m)} margin</div>
+    </div>`;
+  }).join('');
+}
+
+// Why a coffee needs attention, or null if it belongs in the price list.
+function pReviewReason(r, s) {
+  if (r.missing) return { kind: 'missing', text: `Missing green cost for: ${r.missing.map(mEsc).join(', ')}. Add a cost per lb in Inventory.` };
+  if (!s.confirmed) return { kind: 'new', text: 'New — set a price and confirm it.' };
+  if (r.suggested12 > (s.confirmedSuggested || 0)) return { kind: 'cost', text: `Green cost went up — suggested 12oz is now $${r.suggested12} (was $${s.confirmedSuggested}). You charge $${s.price12}.` };
+  return null;
+}
+
+function pCardHTML(p, r, s, reason, editing) {
+  const tag = p.type === 'blend' ? 'Blend' : 'Single origin';
+  const id = pDomId(p.key);
+  const draft = pDrafts()[p.key];
+  const val = draft !== undefined ? draft : (s.price12 || '');
+  const hideBtn = `<button class="btn btn-secondary btn-sm" onclick="pricingSetFlag('${p.key}', 'hidden', ${!s.hidden})">${s.hidden ? '↩ Unhide' : 'Hide'}</button>`;
+  if (r.missing) {
+    return `<div class="maint-card due">
+      <div class="maint-top"><div><div class="maint-name">${mEsc(p.name)}</div><div class="maint-sub">${tag}</div></div></div>
+      <div class="maint-sub" style="margin-top:8px;color:var(--red);">${reason.text}</div>
+      <div class="pr-controls">${hideBtn}</div>
+    </div>`;
+  }
+  const shown = pCalc(p, val || '');
+  const mktFee = (pricing.boothFee + pricing.terminalFee) / 100;
+  const onlineFee = pricing.shopifyFee / 100;
+  const m12 = shown.margin['12oz'];
+  const lossNote = p.type === 'blend' ? `blend avg loss ${r.rc.loss.toFixed(1)}%` : `loss ${r.rc.loss}%`;
+  const msg = reason ? `<div class="maint-sub" style="margin-top:8px;color:var(--accent2);">${reason.text}</div>` : '';
+  return `<div class="maint-card${reason && reason.kind === 'cost' ? ' warn' : ''}" id="${id}">
+    <div class="maint-top">
+      <div>
+        <div class="maint-name">${mEsc(p.name)}</div>
+        <div class="maint-sub">${tag} · green ${pMoney(r.rc.green)}/lb · ${lossNote} · roasted ${pMoney(r.rc.perLb)}/lb</div>
+      </div>
+      <div class="pr-sugg">Suggested 12oz <b>$${r.suggested12}</b></div>
+    </div>
+    ${msg}
+    <div class="pr-sizes" id="${id}-sizes">${pSizesHTML(shown)}</div>
+    <div class="maint-nums" style="margin-top:8px;flex-wrap:wrap;gap:6px;">
+      <span>12oz: keep ${pPct(m12 - mktFee)} at markets · ${pPct(m12 - onlineFee)} online</span>
+      <span>Wholesale floor ${pMoney(r.wholesale)}/lb</span>
+    </div>
+    <div class="pr-controls">
+      <div class="field-group">
+        <span class="field-label">Your 12oz price</span>
+        <input class="field-input" type="number" min="0" step="1" placeholder="$${r.suggested12}" value="${val}" oninput="pricingPreview('${p.key}', this.value)">
+      </div>
+      <label class="pr-check"><input type="checkbox" ${s.limited ? 'checked' : ''} onchange="pricingSetFlag('${p.key}', 'limited', this.checked)"> Limited (no 2lb/5lb)</label>
+      <button class="btn btn-primary btn-sm" onclick="pricingConfirm('${p.key}')">✓ Confirm price</button>
+      ${editing ? `<button class="btn btn-secondary btn-sm" onclick="pricingOpen('${p.key}')">Cancel</button>` : ''}
+      ${hideBtn}
+    </div>
+    <div class="maint-sub" style="margin-top:6px;">Leave the price blank to confirm the suggested $${r.suggested12}.</div>
+  </div>`;
+}
+
+function pRowHTML(p, r, s) {
+  const cell = size => r.prices[size] ? `$${r.prices[size]}` : '—';
+  const m12 = r.margin['12oz'];
+  return `<tr>
+    <td class="pr-row-name">${mEsc(p.name)}${p.type === 'blend' ? ' <span class="pr-tag">Blend</span>' : ''}${s.limited ? ' <span class="pr-tag">Limited</span>' : ''}</td>
+    <td class="pr-sm">${cell('4oz')}</td>
+    <td class="pr-sm">${cell('8oz')}</td>
+    <td class="pr-main">${cell('12oz')}</td>
+    <td>${cell('2lb')}</td>
+    <td>${cell('5lb')}</td>
+    <td class="pr-m${m12 < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(m12)}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="pricingOpen('${p.key}')" aria-label="Edit ${mEsc(p.name)}">✎</button></td>
+  </tr>`;
+}
+
 function renderPricing() {
   renderPricingSettings();
   const el = document.getElementById('pricing-list');
   if (!el) return;
   const showHidden = window._pricingShowHidden || false;
   const all = pProducts();
-  const products = all.filter(p => !!(pricing.products[p.key] || {}).hidden === showHidden);
   const hiddenCount = all.filter(p => (pricing.products[p.key] || {}).hidden).length;
   const btn = document.getElementById('pricing-hidden-btn');
-  if (btn) btn.textContent = showHidden ? '← Back to priced coffees' : `Hidden (${hiddenCount})`;
+  if (btn) btn.textContent = showHidden ? '← Back to pricing' : `Hidden (${hiddenCount})`;
   const sub = document.getElementById('pricing-subtitle');
-  const mktFee = (pricing.boothFee + pricing.terminalFee) / 100;
-  const onlineFee = pricing.shopifyFee / 100;
 
+  const products = all.filter(p => !!(pricing.products[p.key] || {}).hidden === showHidden);
   if (!products.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">💲</div><div class="empty-title">${showHidden ? 'Nothing hidden' : 'No coffees to price'}</div><div class="empty-sub">${showHidden ? 'Hide green coffees you only use in blends' : 'Add coffees in Inventory or Blends'}</div></div>`;
     if (sub) sub.textContent = '';
     return;
   }
 
-  let under = 0;
-  el.innerHTML = products.map(p => {
+  if (showHidden) {
+    el.innerHTML = products.map(p => {
+      const s = pricing.products[p.key] || {};
+      return `<div class="maint-card"><div class="maint-top">
+        <div><div class="maint-name">${mEsc(p.name)}</div><div class="maint-sub">${p.type === 'blend' ? 'Blend' : 'Single origin'}</div></div>
+        <button class="btn btn-secondary btn-sm" onclick="pricingSetFlag('${p.key}', 'hidden', false)">↩ Unhide</button>
+      </div></div>`;
+    }).join('');
+    if (sub) sub.textContent = `${products.length} hidden`;
+    return;
+  }
+
+  const review = [], done = [];
+  products.forEach(p => {
     const r = pCalc(p);
     const s = pricing.products[p.key] || {};
-    const tag = p.type === 'blend' ? 'Blend' : 'Single origin';
-    const controls = `
-      <div class="pr-controls">
-        <div class="field-group">
-          <span class="field-label">Your 12oz price</span>
-          <input class="field-input" type="number" min="0" step="1" placeholder="${r.missing ? '' : 'Suggested $' + r.suggested12}" value="${s.price12 || ''}" onchange="pricingSetProduct('${p.key}', 'price12', this.value)">
-        </div>
-        <label class="pr-check"><input type="checkbox" ${s.limited ? 'checked' : ''} onchange="pricingSetProduct('${p.key}', 'limited', this.checked)"> Limited (no 2lb/5lb)</label>
-        <button class="btn btn-secondary btn-sm" onclick="pricingSetProduct('${p.key}', 'hidden', ${!s.hidden})">${s.hidden ? '↩ Unhide' : 'Hide'}</button>
-      </div>`;
-    if (r.missing) {
-      return `<div class="maint-card due">
-        <div class="maint-top"><div><div class="maint-name">${mEsc(p.name)}</div><div class="maint-sub">${tag}</div></div></div>
-        <div class="maint-sub" style="margin-top:8px;color:var(--red);">Missing green cost for: ${r.missing.map(mEsc).join(', ')}. Add a cost per lb in Inventory.</div>
-        ${controls}
-      </div>`;
-    }
-    const isUnder = r.yours > 0 && r.yours < r.suggested12;
-    if (isUnder) under++;
-    const sizes = BAG_SIZES.map(b => {
-      const price = r.prices[b.label];
-      if (!price) return `<div class="pr-size off"><div class="pr-size-label">${b.label}</div><div class="pr-size-price">—</div><div class="pr-size-m">core only</div></div>`;
-      const m = r.margin[b.label];
-      return `<div class="pr-size${b.label === '12oz' ? ' main' : ''}">
-        <div class="pr-size-label">${b.label}</div>
-        <div class="pr-size-price">$${price}</div>
-        <div class="pr-size-m${m < pricing.retailMargin / 100 - 0.05 ? ' low' : ''}">${pPct(m)} margin</div>
-      </div>`;
-    }).join('');
-    const m12 = r.margin['12oz'];
-    const lossNote = p.type === 'blend' ? `blend avg loss ${r.rc.loss.toFixed(1)}%` : `loss ${r.rc.loss}%`;
-    return `<div class="maint-card${isUnder ? ' warn' : ''}">
-      <div class="maint-top">
-        <div>
-          <div class="maint-name">${mEsc(p.name)}</div>
-          <div class="maint-sub">${tag} · green ${pMoney(r.rc.green)}/lb · ${lossNote} · roasted ${pMoney(r.rc.perLb)}/lb</div>
-        </div>
-        <div class="pr-sugg">Suggested 12oz <b>$${r.suggested12}</b></div>
-      </div>
-      ${isUnder ? `<div class="maint-sub" style="margin-top:8px;color:var(--accent2);">Your $${r.yours} is $${r.suggested12 - r.yours} under the suggested price — ${pPct(m12)} margin vs ${pricing.retailMargin}% target.</div>` : ''}
-      <div class="pr-sizes">${sizes}</div>
-      <div class="maint-nums" style="margin-top:8px;flex-wrap:wrap;gap:6px;">
-        <span>12oz: keep ${pPct(m12 - mktFee)} at markets · ${pPct(m12 - onlineFee)} online</span>
-        <span>Wholesale floor ${pMoney(r.wholesale)}/lb</span>
-      </div>
-      ${controls}
-    </div>`;
-  }).join('');
-  if (sub) sub.textContent = `${products.length} coffee${products.length !== 1 ? 's' : ''}${under ? ` · ⚠ ${under} under suggested price` : ''}`;
+    const reason = pReviewReason(r, s);
+    (reason ? review : done).push({ p, r, s, reason });
+  });
+  done.sort((a, b) => a.p.name.localeCompare(b.p.name));
+
+  let html = '';
+  if (review.length) {
+    html += `<div class="pr-section">Needs pricing · ${review.length}</div>`;
+    html += review.map(x => pCardHTML(x.p, x.r, x.s, x.reason, false)).join('');
+  }
+  if (done.length) {
+    html += `<div class="pr-section">Price list · ${done.length}</div>`;
+    const openKey = window._pricingOpen;
+    let rows = '';
+    done.forEach(x => {
+      if (x.p.key === openKey) rows += `<tr><td colspan="8" class="pr-open">${pCardHTML(x.p, x.r, x.s, null, true)}</td></tr>`;
+      else rows += pRowHTML(x.p, x.r, x.s);
+    });
+    html += `<div class="maint-card pr-table-wrap"><table class="pr-table">
+      <thead><tr><th>Coffee</th><th class="pr-sm">4oz</th><th class="pr-sm">8oz</th><th>12oz</th><th>2lb</th><th>5lb</th><th>Margin</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+  el.innerHTML = html;
+  if (sub) sub.textContent = `${done.length} priced${review.length ? ` · ${review.length} need${review.length === 1 ? 's' : ''} pricing` : ''}`;
 }
 
 function renderHistory() {
