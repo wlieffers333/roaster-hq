@@ -2329,7 +2329,7 @@ function renderInventory() {
       <div class="card-actions">
         ${c.archived
           ? '<button class="btn btn-secondary btn-sm" onclick="unarchiveCoffee(\''+c.id+'\')">↩ Unarchive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
-          : '<button class="btn btn-secondary btn-sm" onclick="openRestock(\''+c.id+'\')">+ Restock</button><button class="btn btn-secondary btn-sm" onclick="openRemoveStock(\''+c.id+'\')">− Remove Stock</button><button class="btn btn-secondary btn-sm" onclick="quickTestRoast(\''+c.id+'\')">🧪 Test Roast</button><button class="btn btn-secondary btn-sm" onclick="openCalcLoss(\''+c.id+'\')">% Calc Loss</button><button class="btn btn-secondary btn-sm" onclick="openTransfer(\''+c.id+'\')">⇄ Transfer</button><button class="btn btn-secondary btn-sm" onclick="openRoastProfiles(\''+c.id+'\')">☕ Roast Levels</button><button class="btn btn-secondary btn-sm" onclick="openCuppingNotes(\''+c.id+'\')">✎ Cup Notes</button><button class="btn btn-secondary btn-sm" onclick="openEditCoffee(\''+c.id+'\')">Edit</button><button class="btn btn-secondary btn-sm" onclick="archiveCoffee(\''+c.id+'\')">Archive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
+          : '<button class="btn btn-secondary btn-sm" onclick="openRestock(\''+c.id+'\')">+ Restock</button><button class="btn btn-secondary btn-sm" onclick="openRemoveStock(\''+c.id+'\')">− Remove Stock</button><button class="btn btn-secondary btn-sm" onclick="openCalcLoss(\''+c.id+'\')">% Calc Loss</button><button class="btn btn-secondary btn-sm" onclick="openTransfer(\''+c.id+'\')">⇄ Transfer</button><button class="btn btn-secondary btn-sm" onclick="openRoastProfiles(\''+c.id+'\')">☕ Roast Levels</button><button class="btn btn-secondary btn-sm" onclick="openCuppingNotes(\''+c.id+'\')">✎ Cup Notes</button><button class="btn btn-secondary btn-sm" onclick="openEditCoffee(\''+c.id+'\')">Edit</button><button class="btn btn-secondary btn-sm" onclick="archiveCoffee(\''+c.id+'\')">Archive</button><button class="btn btn-danger btn-sm" onclick="deleteCoffee(\''+c.id+'\')">Remove</button>'
         }
       </div>
     </div>`;
@@ -2460,49 +2460,6 @@ function confirmRestock() {
 }
 
 let removeStockId = null;
-
-// One-click standalone test roast from the Inventory card: subtracts the
-// fixed test charge (no roast loss), logs it to History as its own session
-// and counts it toward maintenance — same result as a planner test roast.
-function quickTestRoast(id) {
-  const c = inventory.find(x => x.id === id);
-  if (!c) return;
-  const lbs = TEST_ROAST_OZ / 16;
-  const shortNote = c.stock < lbs
-    ? `\n\nOnly ${(c.stock * 16).toFixed(1)} oz in stock — inventory will show the deficit.`
-    : '';
-  if (!confirm(`Test roast ${TEST_ROAST_OZ} oz of ${c.name}?\n\nThis subtracts ${TEST_ROAST_OZ} oz of green from inventory and logs it in History.${shortNote}`)) return;
-
-  const today = new Date().toISOString().split('T')[0];
-  c.stock = parseFloat((c.stock - lbs).toFixed(2));
-  c.lastRoasted = today;
-
-  const bagTotals = {};
-  BAG_SIZES.forEach(bs => { bagTotals[bs.label] = 0; });
-  const item = {
-    id: genId(), type: 'single', testRoast: true, testOz: TEST_ROAST_OZ,
-    coffeeId: c.id, name: c.name, roastLevel: null, loss: 0,
-    maxBatch: c.maxBatch || null,
-    bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 }, extraOz: 0,
-    _greenLbs: lbs, _roastedLbs: 0
-  };
-  roastLog.push({
-    id: genId(),
-    date: today,
-    totalGreen: lbs,
-    totalBatches: 1,
-    bagTotals,
-    coffees: { [c.name]: lbs },
-    testRoast: true,
-    printDate: new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' }),
-    items: [item]
-  });
-
-  addMaintenanceLbs(lbs);
-  save();
-  renderAll();
-  showToast(`Test roast logged — ${TEST_ROAST_OZ} oz of ${c.name} removed`);
-}
 
 function openRemoveStock(id) {
   removeStockId = id;
@@ -5390,7 +5347,7 @@ function renderHistory() {
       <div class="history-header">
         <div>
           <div class="history-date">${dateLabel}</div>
-          <div class="history-meta">${entry.totalBatches || 0} batch${entry.totalBatches === 1 ? '' : 'es'}${entry.testRoast ? ' · test roast' : ''}</div>
+          <div class="history-meta">${entry.totalBatches || 0} batch${entry.totalBatches === 1 ? '' : 'es'}</div>
         </div>
         <div class="history-totals">
           <div class="history-green">${((entry.totalGreen || 0) * 16).toFixed(1)}</div>
