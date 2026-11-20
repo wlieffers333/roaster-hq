@@ -1380,6 +1380,7 @@ nav {
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-secondary" id="load-queue-btn" onclick="loadQueue()" style="display:none;">📋 Load Queue</button>
+      <button class="btn btn-secondary" onclick="openAddPlannerItem('test')">🧪 Test Roast</button>
       <button class="btn btn-secondary" onclick="openAddPlannerItem('single')">+ Single Origin</button>
       <button class="btn btn-primary" onclick="openAddPlannerItem('blend')">+ Blend</button>
     </div>
@@ -1872,6 +1873,10 @@ function ensureMaintenanceTasks() {
   if (!maintenance.tasks.some(t => t.id === 'duct-clean')) maintenance.tasks.push(ductTask());
 }
 let blendComponentCount = 0;
+
+// Standard test-roast batch: a fixed green charge, pulled straight from
+// inventory with no bags and no roast-loss math.
+const TEST_ROAST_OZ = 24;
 
 const BAG_SIZES = [
   { label: '4oz', oz: 4 },
@@ -2698,8 +2703,8 @@ function openAddPlannerItem(type) {
   plannerType = type;
   const sel = document.getElementById('planner-select');
 
-  if (type === 'single') {
-    document.getElementById('planner-add-title').textContent = 'Add Single Origin';
+  if (type === 'single' || type === 'test') {
+    document.getElementById('planner-add-title').textContent = type === 'test' ? `Add Test Roast (${TEST_ROAST_OZ} oz green)` : 'Add Single Origin';
     document.getElementById('planner-select-label').textContent = 'Select Coffee';
     sel.innerHTML = inventory.length
       ? [...inventory].filter(c => !c.archived).sort((a,b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name} (${c.stock.toFixed(1)} lbs)</option>`).join('')
@@ -2736,6 +2741,28 @@ function updateRoastLevelSelector() {
 function confirmAddToPlanner() {
   const selVal = document.getElementById('planner-select').value;
   if (!selVal) { showToast('Nothing selected'); return; }
+
+  if (plannerType === 'test') {
+    const coffee = inventory.find(c => c.id === selVal);
+    if (!coffee) return;
+    const levelSel = document.getElementById('planner-roast-level');
+    const selectedLevel = levelSel && document.getElementById('planner-roast-level-wrap').style.display !== 'none' ? levelSel.value : null;
+    plannerItems.push({
+      id: genId(), type: 'single', testRoast: true,
+      testOz: TEST_ROAST_OZ,
+      coffeeId: coffee.id, name: coffee.name,
+      roastLevel: selectedLevel || null,
+      loss: 0,
+      maxBatch: coffee.maxBatch || null,
+      declinedCombine: true, // a test batch never merges with a blend roast
+      bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+      extraOz: 0
+    });
+    closeModal('modal-planner-add');
+    renderPlanner();
+    renderSummary();
+    return;
+  }
 
   if (plannerType === 'single') {
     const coffee = inventory.find(c => c.id === selVal);
@@ -3070,6 +3097,25 @@ function buildPlannerEntryHTML(item) {
         <div class="result-box" id="result-${item.id}">
           <div class="result-empty">Waiting on blend bag quantities…</div>
         </div>
+      </div>
+    </div>`;
+  }
+
+  if (item.testRoast) {
+    const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
+    return `<div class="planner-entry" id="pentry-${item.id}">
+      <div class="entry-head">
+        <div class="entry-head-left">
+          <span class="entry-label">🧪 Test Roast</span>
+          <span class="entry-title">${item.name}${levelLabel}</span>
+        </div>
+        <button class="btn-ghost" onclick="removePlannerItem('${item.id}')">✕</button>
+      </div>
+      <div class="entry-body">
+        <div style="font-size:0.7rem;color:var(--text2);margin-bottom:10px;line-height:1.5;">
+          Pulls ${item.testOz} oz of green straight from inventory. No bags, no roast loss.
+        </div>
+        <div class="result-box" id="result-${item.id}"></div>
       </div>
     </div>`;
   }
@@ -3481,6 +3527,26 @@ function calcPlannerItem(item) {
   const resultEl = document.getElementById(`result-${item.id}`);
   if (!resultEl) return;
 
+  if (item.testRoast) {
+    const greenOz = item.testOz || TEST_ROAST_OZ;
+    item._greenLbs = greenOz / 16;
+    item._roastedLbs = 0;
+    const coffee = inventory.find(c => c.id === item.coffeeId);
+    const availableOz = coffee ? coffee.stock * 16 : null;
+    const stockWarning = (availableOz !== null && greenOz > availableOz)
+      ? `<div style="background:rgba(220,80,60,0.12);border:1px solid rgba(220,80,60,0.35);border-radius:6px;padding:8px 12px;margin-top:8px;font-size:0.72rem;color:#e05a45;">
+          ⚠️ Needs ${greenOz.toFixed(1)} oz but only ${availableOz.toFixed(1)} oz available (${(greenOz - availableOz).toFixed(1)} oz short)
+        </div>` : '';
+    resultEl.innerHTML = `
+      <div class="result-grid">
+        <div class="result-item"><div class="result-label">Green to Charge</div><div class="result-val highlight">${greenOz.toFixed(1)}</div><div class="result-unit">OZ</div></div>
+        <div class="result-item"><div class="result-label">Batches</div><div class="result-val highlight">1</div><div class="result-unit">test batch</div></div>
+        <div class="result-item"><div class="result-label">Roast Loss</div><div class="result-val">—</div><div class="result-unit">not counted</div></div>
+      </div>
+      ${stockWarning}`;
+    return;
+  }
+
   let totalRoastedOz = 0;
   BAG_SIZES.forEach(bs => { totalRoastedOz += (item.bags[bs.label] || 0) * bs.oz; });
   totalRoastedOz += (item.extraOz || 0);
@@ -3739,9 +3805,11 @@ function renderSummary() {
 
   const rows = active.map(item => {
     const bagSummary = BAG_SIZES.filter(bs => item.bags[bs.label] > 0).map(bs => `${item.bags[bs.label]}×${bs.label}`).join(', ');
-    const detail = item.type === 'blend'
-      ? `${bagSummary} · blend`
-      : `${bagSummary} · ${item.loss}% loss`;
+    const detail = item.testRoast
+      ? 'Test roast · no roast loss'
+      : item.type === 'blend'
+        ? `${bagSummary} · blend`
+        : `${bagSummary} · ${item.loss}% loss`;
     return `<div class="sum-row">
       <div><div class="sum-name">${item.name}</div><div class="sum-detail">${detail}</div></div>
       <div><span class="sum-weight">${(item._greenLbs * 16).toFixed(1)}</span><span class="sum-unit">oz green</span></div>
@@ -3788,7 +3856,7 @@ function renderSummary() {
       }
 
       return `<div style="margin-bottom:14px;">
-        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--text);margin-bottom:6px;font-weight:600;">${item.name}${item.roastLevel ? ` <span style="font-size:0.65rem;color:var(--text3);font-family:'DM Mono',monospace;">${item.roastLevel}</span>` : ''}</div>
+        <div style="font-family:'Lora',serif;font-size:0.85rem;color:var(--text);margin-bottom:6px;font-weight:600;">${item.name}${item.roastLevel ? ` <span style="font-size:0.65rem;color:var(--text3);font-family:'DM Mono',monospace;">${item.roastLevel}</span>` : ''}${item.testRoast ? ` <span style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">TEST ROAST</span>` : ''}</div>
         ${batchList}
         <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:2px;">
           <span style="color:var(--text3);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;">Total Green</span>
@@ -4235,7 +4303,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
 
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
       return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
-        <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}</div>
+        <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}${item.testRoast ? ` <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">TEST ROAST</span>` : ''}</div>
         ${batches}
         <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#000' : 'rgba(0,0,0,0.06)'};">
           <span style="color:${subColor};font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;">Total green</span>
