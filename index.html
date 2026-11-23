@@ -409,7 +409,7 @@ nav {
 .pr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .pr-sugg { font-size: 0.72rem; color: var(--text2); }
 .pr-sugg b { color: var(--accent2); font-size: 1rem; }
-.pr-sizes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
+.pr-sizes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 12px; }
 .pr-size { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 6px; text-align: center; }
 .pr-size.main { border-color: var(--accent); }
 .pr-size.off { opacity: 0.45; }
@@ -1880,6 +1880,7 @@ const TEST_ROAST_OZ = 24;
 
 const BAG_SIZES = [
   { label: '4oz', oz: 4 },
+  { label: '6oz', oz: 6 },  // ships in the same bag as 8oz/12oz
   { label: '8oz', oz: 8 },
   { label: '12oz', oz: 12 },
   { label: '2lb', oz: 32 },
@@ -2755,7 +2756,7 @@ function confirmAddToPlanner() {
       loss: 0,
       maxBatch: coffee.maxBatch || null,
       declinedCombine: true, // a test batch never merges with a blend roast
-      bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+      bags: { '4oz': 0, '6oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
       extraOz: 0
     });
     closeModal('modal-planner-add');
@@ -2779,7 +2780,7 @@ function confirmAddToPlanner() {
       roastLevel,
       loss,
       maxBatch: coffee.maxBatch || null,
-      bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+      bags: { '4oz': 0, '6oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
       extraOz: 0
     });
   } else {
@@ -2789,7 +2790,7 @@ function confirmAddToPlanner() {
       id: genId(), type: 'blend',
       blendId: blend.id, name: blend.name,
       components: blend.components.map(c => ({ ...c })),
-      bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+      bags: { '4oz': 0, '6oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
       extraOz: 0
     });
   }
@@ -2918,7 +2919,7 @@ function acceptCombine() {
         loss,
         maxBatch: (coffeeObj && coffeeObj.maxBatch) ? coffeeObj.maxBatch : null,
         hostedBlends: [blendA.id, blendB.id],
-        bags: { '4oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
+        bags: { '4oz': 0, '6oz': 0, '8oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 },
         extraOz: 0
       };
       plannerItems.push(sharedItem);
@@ -4225,8 +4226,8 @@ function buildBagsAndLabelsHTML(active, forPrint, standaloneDate) {
     </div>`;
   }).join('');
 
-  // Grand totals across every item — 8oz and 12oz share the same physical
-  // bag, so their counts are merged into one number here.
+  // Grand totals across every item — 6oz, 8oz and 12oz share the same
+  // physical bag, so their counts are merged into one number here.
   const totals = {};
   BAG_SIZES.forEach(bs => { totals[bs.label] = 0; });
   let totalExtraOz = 0;
@@ -4236,8 +4237,8 @@ function buildBagsAndLabelsHTML(active, forPrint, standaloneDate) {
   });
 
   const grandParts = [];
-  const sharedBagCount = (totals['8oz'] || 0) + (totals['12oz'] || 0);
-  if (sharedBagCount > 0) grandParts.push(`${sharedBagCount} bags (8oz/12oz)`);
+  const sharedBagCount = (totals['6oz'] || 0) + (totals['8oz'] || 0) + (totals['12oz'] || 0);
+  if (sharedBagCount > 0) grandParts.push(`${sharedBagCount} bags (6/8/12oz)`);
   ['4oz', '2lb', '5lb'].forEach(label => {
     if (totals[label] > 0) grandParts.push(`${totals[label]}×${label}`);
   });
@@ -4679,12 +4680,14 @@ function renderDashBags(ytdLogs, year) {
   emptyEl.style.display = 'none';
 
   // Aggregate bag totals across all ytd logs
-  const totals = { '4oz': 0, '12oz': 0, '2lb': 0, '5lb': 0 };
+  // 6oz, 8oz and 12oz all use the same physical bag, so they count together.
+  const totals = { '4oz': 0, '6/8/12oz': 0, '2lb': 0, '5lb': 0 };
   ytdLogs.forEach(r => {
     if (r.bagTotals) {
-      Object.keys(totals).forEach(k => {
-        totals[k] += r.bagTotals[k] || 0;
-      });
+      totals['4oz'] += r.bagTotals['4oz'] || 0;
+      totals['6/8/12oz'] += (r.bagTotals['6oz'] || 0) + (r.bagTotals['8oz'] || 0) + (r.bagTotals['12oz'] || 0);
+      totals['2lb'] += r.bagTotals['2lb'] || 0;
+      totals['5lb'] += r.bagTotals['5lb'] || 0;
     }
   });
 
@@ -4975,7 +4978,7 @@ function defaultPricing() {
     disc2lb: 10,           // % off per oz vs 12oz
     disc5lb: 15,
     label: 0.10,
-    bags: { '4oz': 0.36, '8oz': 0.72, '12oz': 0.72, '2lb': 0.58, '5lb': 1.03 }, // 8oz ships in the 12oz bag
+    bags: { '4oz': 0.36, '6oz': 0.72, '8oz': 0.72, '12oz': 0.72, '2lb': 0.58, '5lb': 1.03 }, // 6oz and 8oz ship in the 12oz bag
     products: {}           // 'c:<id>' / 'b:<id>' -> { base, price, confirmed, confirmedSuggested, limited, hidden }
   };
 }
@@ -5071,6 +5074,7 @@ function renderPricingSettings() {
     <div class="pr-set-title">Packaging ($ each)</div>
     <div class="pr-grid">
       ${bag('4oz', '4oz bag')}
+      ${bag('6oz', '6oz (12oz bag)')}
       ${bag('8oz', '8oz (12oz bag)')}
       ${bag('12oz', '12oz bag')}
       ${bag('2lb', '2lb bag')}
@@ -5080,9 +5084,10 @@ function renderPricingSettings() {
     <div class="maint-sub" style="margin-top:10px;">Retail margin = price minus coffee and packaging. Markets take ${mkt.toFixed(1)}% in fees, Shopify ${pricing.shopifyFee}% (shipping not included). Prices round to the nearest dollar.</div>`;
 }
 
-// Base size = the bag a coffee is mainly sold in (12oz by default, or 8oz).
-function pBase(settings) { return settings.base === '8oz' ? '8oz' : '12oz'; }
-function pBaseOz(base) { return base === '8oz' ? 8 : 12; }
+// Base size = the bag a coffee is mainly sold in (12oz by default, or 8oz/6oz
+// for pricier coffees). Sizes above the base aren't sold.
+function pBase(settings) { return (settings.base === '8oz' || settings.base === '6oz') ? settings.base : '12oz'; }
+function pBaseOz(base) { return base === '6oz' ? 6 : base === '8oz' ? 8 : 12; }
 function pSavedPrice(settings) { return pNum(settings.price !== undefined ? settings.price : settings.price12); }
 
 function pCalc(product, override) {
@@ -5100,7 +5105,8 @@ function pCalc(product, override) {
   const atLeast = (size, oz) => Math.round(Math.max(cogs[size] / (1 - m), perOz * oz));
   const prices = {
     '4oz':  atLeast('4oz', 4),
-    '8oz':  base === '8oz' ? baseP : atLeast('8oz', 8),
+    '6oz':  base === '6oz' ? baseP : atLeast('6oz', 6),
+    '8oz':  base === '8oz' ? baseP : (base === '6oz' ? null : atLeast('8oz', 8)),
     '12oz': base === '12oz' ? baseP : null,
     '2lb':  settings.limited ? null : Math.round(perOz * 32 * (1 - pricing.disc2lb / 100)),
     '5lb':  settings.limited ? null : Math.round(perOz * 80 * (1 - pricing.disc5lb / 100))
@@ -5200,7 +5206,7 @@ function pSizesHTML(r) {
   return BAG_SIZES.map(b => {
     const price = r.prices[b.label];
     if (!price) {
-      const why = b.label === '12oz' ? 'not sold' : 'core only';
+      const why = (b.label === '12oz' || b.label === '8oz') ? 'not sold' : 'core only';
       return `<div class="pr-size off"><div class="pr-size-label">${b.label}</div><div class="pr-size-price">—</div><div class="pr-size-m">${why}</div></div>`;
     }
     const m = r.margin[b.label];
@@ -5256,7 +5262,7 @@ function pCardHTML(p, r, s, reason, editing) {
     <div class="pr-controls">
       <div class="field-group" style="width:90px;">
         <span class="field-label">Sells as</span>
-        <select class="field-input" onchange="pricingSetBase('${p.key}', this.value)">${baseOpt('12oz')}${baseOpt('8oz')}</select>
+        <select class="field-input" onchange="pricingSetBase('${p.key}', this.value)">${baseOpt('12oz')}${baseOpt('8oz')}${baseOpt('6oz')}</select>
       </div>
       <div class="field-group">
         <span class="field-label">Your ${r.base} price</span>
@@ -5278,8 +5284,9 @@ function pRowHTML(p, r, s) {
   };
   const mb = r.margin[r.base];
   return `<tr>
-    <td class="pr-row-name">${mEsc(p.name)}${p.type === 'blend' ? ' <span class="pr-tag">Blend</span>' : ''}${r.base === '8oz' ? ' <span class="pr-tag">8oz</span>' : ''}${s.limited ? ' <span class="pr-tag">Limited</span>' : ''}</td>
+    <td class="pr-row-name">${mEsc(p.name)}${p.type === 'blend' ? ' <span class="pr-tag">Blend</span>' : ''}${r.base !== '12oz' ? ` <span class="pr-tag">${r.base}</span>` : ''}${s.limited ? ' <span class="pr-tag">Limited</span>' : ''}</td>
     <td class="pr-sm">${cell('4oz')}</td>
+    <td>${cell('6oz')}</td>
     <td>${cell('8oz')}</td>
     <td>${cell('12oz')}</td>
     <td>${cell('2lb')}</td>
@@ -5342,7 +5349,7 @@ function renderPricing() {
       else rows += pRowHTML(x.p, x.r, x.s);
     });
     html += `<div class="maint-card pr-table-wrap"><table class="pr-table">
-      <thead><tr><th>Coffee</th><th class="pr-sm">4oz</th><th>8oz</th><th>12oz</th><th>2lb</th><th>5lb</th><th>Margin</th><th></th></tr></thead>
+      <thead><tr><th>Coffee</th><th class="pr-sm">4oz</th><th>6oz</th><th>8oz</th><th>12oz</th><th>2lb</th><th>5lb</th><th>Margin</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   }
   el.innerHTML = html;
@@ -5371,8 +5378,8 @@ function renderHistory() {
 
     const bagParts = [];
     if (entry.bagTotals) {
-      const shared = (entry.bagTotals['8oz'] || 0) + (entry.bagTotals['12oz'] || 0);
-      if (shared > 0) bagParts.push(`${shared} bags (8oz/12oz)`);
+      const shared = (entry.bagTotals['6oz'] || 0) + (entry.bagTotals['8oz'] || 0) + (entry.bagTotals['12oz'] || 0);
+      if (shared > 0) bagParts.push(`${shared} bags (6/8/12oz)`);
       ['4oz', '2lb', '5lb'].forEach(label => {
         if (entry.bagTotals[label] > 0) bagParts.push(`${entry.bagTotals[label]}×${label}`);
       });
