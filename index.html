@@ -4197,7 +4197,7 @@ function executeRoast() {
   }
 }
 
-function buildBagsAndLabelsHTML(active, forPrint) {
+function buildBagsAndLabelsHTML(active, forPrint, standaloneDate) {
   const textColor = forPrint ? '#000' : 'var(--text)';
   // Thermal printers often can't render a mid-gray reliably — it prints
   // faint, patchy, or not at all — so print mode uses solid black
@@ -4218,10 +4218,10 @@ function buildBagsAndLabelsHTML(active, forPrint) {
     const label = (item.type === 'single' && item.roastLevel) ? `${item.name} — ${item.roastLevel}` : item.name;
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${rowBorder};">
       <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '8px'};">
-        ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+        ${forPrint ? `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #000;border-radius:2px;flex-shrink:0;box-sizing:border-box;"></span>` : ''}
         <span style="color:${textColor};font-size:0.8rem;">${label}</span>
       </div>
-      <span style="color:${accentColor};font-size:0.78rem;font-weight:600;white-space:nowrap;">${parts.join(', ')}</span>
+      <span style="color:${accentColor};font-size:0.78rem;font-weight:600;${forPrint ? 'text-align:right;' : 'white-space:nowrap;'}">${parts.join(', ')}</span>
     </div>`;
   }).join('');
 
@@ -4242,6 +4242,23 @@ function buildBagsAndLabelsHTML(active, forPrint) {
     if (totals[label] > 0) grandParts.push(`${totals[label]}×${label}`);
   });
   if (totalExtraOz > 0) grandParts.push(`${totalExtraOz.toFixed(1)} oz extra`);
+
+  // Printed version sits on its own label/page with its own header, so it
+  // still makes sense once torn off from the batch sheet.
+  if (standaloneDate) {
+    return `
+    <div class="tp-page">
+      <div style="border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;">
+        <div style="font-size:1rem;font-weight:bold;letter-spacing:0.06em;text-transform:uppercase;color:#000;">Bags &amp; Labels Needed</div>
+        <div style="font-size:0.7rem;color:#000;margin-top:2px;">${standaloneDate}</div>
+      </div>
+      ${rows}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-top:10px;padding-top:8px;border-top:2px solid #000;">
+        <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:#000;white-space:nowrap;">Grand Total</span>
+        <span style="font-weight:bold;font-size:0.95rem;color:#000;text-align:right;">${grandParts.join(' · ')}</span>
+      </div>
+    </div>`;
+  }
 
   return `
     <div style="margin-top:${forPrint ? '20px' : '16px'};padding-top:14px;border-top:2px solid ${textColor};">
@@ -4270,7 +4287,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const batches = Array.from({length: numBatches}, (_,i) =>
         `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #000;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
           <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
-            ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+            ${forPrint ? `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #000;border-radius:2px;flex-shrink:0;box-sizing:border-box;"></span>` : ''}
             <span style="color:${subColor};font-size:0.78rem;">Batch ${i+1}</span>
           </div>
           <span style="color:${accentColor};font-weight:bold;font-size:0.9rem;">${ozEach.toFixed(1)} oz</span>
@@ -4302,7 +4319,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       }
 
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
+      return `<div class="tp-item" style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name}${levelLabel}${item.testRoast ? ` <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">TEST ROAST</span>` : ''}</div>
         ${batches}
         <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${forPrint ? '#000' : 'rgba(0,0,0,0.06)'};">
@@ -4318,7 +4335,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       const batches = Array.from({length: numBatches}, (_,i) =>
         `<div style="${forPrint ? 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dotted #000;' : 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(0,0,0,0.06);'}">
           <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
-            ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+            ${forPrint ? `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #000;border-radius:2px;flex-shrink:0;box-sizing:border-box;"></span>` : ''}
             <span style="color:${subColor};font-size:0.78rem;">Batch ${i+1}</span>
           </div>
           <span style="color:${accentColor};font-weight:bold;font-size:0.9rem;">${ozEach.toFixed(1)} oz</span>
@@ -4350,7 +4367,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       }
 
       const levelLabel = item.roastLevel ? ` — ${item.roastLevel}` : '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
+      return `<div class="tp-item" style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${textColor};margin-bottom:2px;">${item.name}${levelLabel} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">SHARED ROAST</span></div>
         ${hostedNames.length ? `<div style="font-size:0.68rem;color:${subColor};margin-bottom:6px;">🔗 Split between ${hostedNames.join(' + ')}</div>` : ''}
         ${batches}
@@ -4383,7 +4400,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           const batches = Array.from({length: cr.numBatches}, (_,i) =>
             `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px ${forPrint ? '0' : '12px'};">
               <div style="display:flex;align-items:center;gap:${forPrint ? '10px' : '6px'};">
-                ${forPrint ? `<input type="checkbox" style="width:16px;height:16px;margin:0;cursor:pointer;accent-color:#000;">` : ''}
+                ${forPrint ? `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #000;border-radius:2px;flex-shrink:0;box-sizing:border-box;"></span>` : ''}
                 <span style="color:${subColor};font-size:0.75rem;">${cr.name} — Batch ${i+1}</span>
               </div>
               <span style="color:${accentColor};font-weight:bold;font-size:0.88rem;">${ozEach.toFixed(1)} oz</span>
@@ -4429,7 +4446,7 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
       }
 
       if (!compLines && !combinedNote) return '';
-      return `<div style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
+      return `<div class="tp-item" style="margin-bottom:14px;${forPrint ? 'border-bottom:1px solid #000;padding-bottom:12px;' : ''}">
         <div style="font-weight:600;font-size:0.9rem;color:${accentColor};margin-bottom:${forPrint ? '2px' : '6px'};">${item.name} <span style="font-size:0.6rem;color:${subColor};font-weight:normal;">BLEND</span></div>
         ${combinedNote}
         ${compLines}
@@ -4439,14 +4456,10 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
     return '';
   }).join('');
 
-  return `
-    <div style="border-bottom:1px solid rgba(0,0,0,0.15);padding-bottom:12px;margin-bottom:14px;">
-      <div style="font-size:1rem;font-weight:bold;letter-spacing:0.06em;text-transform:uppercase;color:${textColor};">Roast Day Batch Sheet</div>
-      <div style="font-size:0.7rem;color:${subColor};margin-top:2px;">${dateStr}</div>
-      <div style="font-size:0.65rem;color:${subColor};margin-top:1px;">Max batch: ${maxBatch} lbs</div>
-    </div>
-    ${items}
-    <div style="border-top:2px solid ${textColor};padding-top:12px;margin-top:8px;">
+  // Printed sheets show the totals right under the header so they never
+  // end up alone on an extra label.
+  const totalsHTML = `
+    <div style="${forPrint ? 'border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:14px;' : 'border-top:2px solid ' + textColor + ';padding-top:12px;margin-top:8px;'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:${subColor};">Total Green</span>
         <span style="font-weight:bold;font-size:1.2rem;color:${accentColor};">${(totalGreen * 16).toFixed(1)} oz</span>
@@ -4465,9 +4478,38 @@ function buildBatchSheetHTML(active, totalGreen, dateStr, forPrint) {
           return s;
         }, 0)}</span>
       </div>
+    </div>`;
+
+  return `
+    <div style="border-bottom:${forPrint ? '2px solid #000' : '1px solid rgba(0,0,0,0.15)'};padding-bottom:${forPrint ? '8px' : '12px'};margin-bottom:14px;">
+      <div style="font-size:1rem;font-weight:bold;letter-spacing:0.06em;text-transform:uppercase;color:${textColor};">Roast Day Batch Sheet</div>
+      <div style="font-size:0.7rem;color:${subColor};margin-top:2px;">${dateStr}</div>
+      <div style="font-size:0.65rem;color:${subColor};margin-top:1px;">Max batch: ${maxBatch} lbs</div>
     </div>
-    ${buildBagsAndLabelsHTML(active, forPrint)}`;
+    ${forPrint ? totalsHTML : ''}
+    ${items}
+    ${forPrint ? '' : totalsHTML}
+    ${forPrint ? buildBagsAndLabelsHTML(active, true, dateStr) : buildBagsAndLabelsHTML(active, false)}`;
 }
+
+// Batch sheets print on the same 4"×6" thermal labels as the Shopify packing
+// slips. Each coffee is kept together on one label, and the Bags & Labels
+// summary always starts on its own label.
+const THERMAL_PAGE_CSS = `
+  @page { size: 4in 6in; margin: 0.15in; }
+  html { font-size: 13.5px; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 0; width: 3.7in;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tp-item { break-inside: avoid; page-break-inside: avoid; }
+  .tp-page { break-before: page; page-break-before: always; }
+  .tp-toolbar { display: flex; gap: 10px; margin-bottom: 14px; }
+  .tp-toolbar button { padding: 8px 16px; font-size: 14px; cursor: pointer; border-radius: 4px; }
+  @media screen {
+    body { margin: 16px auto; padding: 0.15in; border: 1px dashed #bbb; }
+    .tp-page { margin-top: 18px; padding-top: 14px; border-top: 2px dashed #bbb; }
+  }
+  @media print { .tp-toolbar { display: none !important; } }
+`;
 
 let _printActive = [];
 let _printTotalGreen = 0;
@@ -4491,10 +4533,11 @@ function printBatchSheet() {
     overlay.id = 'print-overlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:9999;overflow:auto;padding:24px;box-sizing:border-box;';
     overlay.innerHTML = `
-      <div style="max-width:600px;margin:0 auto;font-family:Georgia,serif;color:#000;">
-        <div style="display:flex;gap:10px;margin-bottom:20px;">
-          <button onclick="window.print()" style="padding:8px 16px;font-size:14px;cursor:pointer;background:#000;color:#fff;border:none;border-radius:4px;">Print</button>
-          <button onclick="document.getElementById('print-overlay').remove()" style="padding:8px 16px;font-size:14px;cursor:pointer;background:#fff;color:#000;border:1px solid #ccc;border-radius:4px;">Close</button>
+      <style>${THERMAL_PAGE_CSS}</style>
+      <div style="width:3.7in;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:13.5px;">
+        <div class="tp-toolbar">
+          <button onclick="window.print()" style="background:#000;color:#fff;border:none;">Print</button>
+          <button onclick="document.getElementById('print-overlay').remove()" style="background:#fff;color:#000;border:1px solid #ccc;">Close</button>
         </div>
         ${html}
       </div>`;
@@ -4505,13 +4548,10 @@ function printBatchSheet() {
 <html>
 <head>
 <title>Roast Day Batch Sheet</title>
-<style>
-  body { font-family: Georgia, serif; color: #000; padding: 24px; max-width: 600px; margin: 0 auto; }
-  @media print { body { padding: 0; } button { display: none !important; } }
-</style>
+<style>${THERMAL_PAGE_CSS}</style>
 </head>
 <body>
-<button onclick="window.print()" style="margin-bottom:16px;padding:8px 16px;font-size:14px;cursor:pointer;background:#000;color:#fff;border:none;border-radius:4px;">Print</button>
+<div class="tp-toolbar"><button onclick="window.print()" style="background:#000;color:#fff;border:none;">Print</button></div>
 ${html}
 </body>
 </html>`);
