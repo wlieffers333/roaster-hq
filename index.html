@@ -5334,6 +5334,10 @@ function renderPricing() {
     (reason ? review : done).push({ p, r, s, reason });
   });
   done.sort((a, b) => a.p.name.localeCompare(b.p.name));
+  // Needs pricing: most urgent first (cost went up, then new, then missing
+  // green cost), A–Z within each group.
+  const urgency = { cost: 0, new: 1, missing: 2 };
+  review.sort((a, b) => (urgency[a.reason.kind] - urgency[b.reason.kind]) || a.p.name.localeCompare(b.p.name));
 
   let html = '';
   if (review.length) {
