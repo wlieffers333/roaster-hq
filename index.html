@@ -5345,7 +5345,7 @@ function renderPricing() {
     const openKey = window._pricingOpen;
     let rows = '';
     done.forEach(x => {
-      if (x.p.key === openKey) rows += `<tr><td colspan="8" class="pr-open">${pCardHTML(x.p, x.r, x.s, null, true)}</td></tr>`;
+      if (x.p.key === openKey) rows += `<tr><td colspan="9" class="pr-open">${pCardHTML(x.p, x.r, x.s, null, true)}</td></tr>`;
       else rows += pRowHTML(x.p, x.r, x.s);
     });
     html += `<div class="maint-card pr-table-wrap"><table class="pr-table">
